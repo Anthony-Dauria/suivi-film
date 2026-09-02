@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
+import { Logo } from "@/components/Logo";
+
 const LINKS = [
   { href: "/", label: "Accueil" },
   { href: "/recherche", label: "Rechercher" },
@@ -24,9 +26,7 @@ export function NavBar() {
     <header className="sticky top-0 z-40 border-b border-ink-800 bg-ink-950/85 backdrop-blur">
       <nav className="mx-auto flex w-full max-w-7xl items-center gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <Link className="flex items-center gap-2 text-lg font-semibold tracking-tight" href="/">
-          <span aria-hidden className="text-xl">
-            🎬
-          </span>
+          <Logo className="size-7 rounded-[6px]" />
           <span>
             Suivi<span className="text-gold-500">Film</span>
           </span>
