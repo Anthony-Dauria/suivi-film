@@ -1,14 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
-import { patchMovie, removeMovie, saveMovie } from "@/lib/client";
+import { useEntry } from "@/lib/hooks";
+import { removeMovie, toggleStatus } from "@/lib/library";
 import type { WatchStatus } from "@/lib/types";
 
 interface QuickActionsProps {
   movieId: number;
-  current: WatchStatus | null;
   /** Affichage compact utilisé en survol de vignette. */
   compact?: boolean;
 }
@@ -19,34 +18,30 @@ const ACTIONS: { status: WatchStatus; label: string; icon: string; title: string
   { status: "dismissed", label: "Non merci", icon: "✕", title: "Ne plus me proposer ce film" },
 ];
 
-/** Boutons de statut réutilisables (vignettes, recommandations, fiche film). */
-export function QuickActions({ movieId, current, compact = false }: QuickActionsProps) {
-  const router = useRouter();
-  const [status, setStatus] = useState<WatchStatus | null>(current);
+/** Boutons de statut réutilisables (vignettes, recommandations). */
+export function QuickActions({ movieId, compact = false }: QuickActionsProps) {
+  const entry = useEntry(movieId);
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
 
   const apply = async (next: WatchStatus) => {
     setError(null);
-    const previous = status;
-    const target = status === next ? null : next;
-    setStatus(target);
-
+    setPending(true);
     try {
-      if (target === null) await removeMovie(movieId);
-      else if (previous === null) await saveMovie(movieId, { status: target });
-      else await patchMovie(movieId, { status: target });
-      startTransition(() => router.refresh());
+      await toggleStatus(movieId, next);
     } catch (cause) {
-      setStatus(previous);
       setError(cause instanceof Error ? cause.message : "Action impossible.");
+      // La fiche n'a pas pu être récupérée : on ne laisse pas d'entrée incomplète.
+      if (!entry) removeMovie(movieId);
+    } finally {
+      setPending(false);
     }
   };
 
   return (
     <div className={compact ? "flex gap-1" : "flex flex-wrap gap-2"}>
       {ACTIONS.map((action) => {
-        const active = status === action.status;
+        const active = entry?.status === action.status;
         return (
           <button
             aria-pressed={active}

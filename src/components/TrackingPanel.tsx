@@ -1,16 +1,15 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { RatingStars } from "@/components/RatingStars";
-import { patchMovie, removeMovie, saveMovie } from "@/lib/client";
-import type { LibraryEntry, WatchStatus } from "@/lib/types";
+import { useEntry } from "@/lib/hooks";
+import { removeMovie, saveMovie, toggleStatus, type EntryPatch } from "@/lib/library";
+import type { WatchStatus } from "@/lib/types";
 
 interface TrackingPanelProps {
   movieId: number;
   title: string;
-  entry: LibraryEntry | null;
 }
 
 const STATUS_BUTTONS: { status: WatchStatus; label: string; icon: string }[] = [
@@ -20,33 +19,33 @@ const STATUS_BUTTONS: { status: WatchStatus; label: string; icon: string }[] = [
 ];
 
 /** Panneau de suivi personnel affiché sur la fiche d'un film. */
-export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
-  const router = useRouter();
-  const [current, setCurrent] = useState<LibraryEntry | null>(entry);
+export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
+  const entry = useEntry(movieId);
   const [notes, setNotes] = useState(entry?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
   const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editingNotes = useRef(false);
 
+  // On ne réécrase pas la zone de texte pendant la saisie de l'utilisateur.
   useEffect(() => {
-    setCurrent(entry);
-    setNotes(entry?.notes ?? "");
+    if (!editingNotes.current) setNotes(entry?.notes ?? "");
   }, [entry]);
 
-  useEffect(() => () => {
-    if (notesTimer.current) clearTimeout(notesTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (notesTimer.current) clearTimeout(notesTimer.current);
+    },
+    [],
+  );
 
-  const run = async (action: () => Promise<LibraryEntry | null>) => {
+  const run = async (action: () => Promise<unknown>) => {
     setError(null);
     setSaving(true);
     try {
-      const updated = await action();
-      setCurrent(updated);
+      await action();
       setSavedAt(new Date().toLocaleTimeString("fr-FR"));
-      startTransition(() => router.refresh());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Enregistrement impossible.");
     } finally {
@@ -54,31 +53,18 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
     }
   };
 
-  const setStatus = (status: WatchStatus) =>
-    run(async () => {
-      if (current?.status === status) {
-        await removeMovie(movieId);
-        return null;
-      }
-      return current ? patchMovie(movieId, { status }) : saveMovie(movieId, { status });
-    });
-
-  /** Toute action de suivi bascule implicitement le film en « vu ». */
-  const updateSeen = (patch: Parameters<typeof patchMovie>[1]) =>
-    run(() =>
-      current
-        ? patchMovie(movieId, { status: "seen", ...patch })
-        : saveMovie(movieId, { status: "seen", ...patch }),
-    );
+  /** Toute action de notation bascule implicitement le film en « vu ». */
+  const updateSeen = (patch: EntryPatch) =>
+    run(() => saveMovie(movieId, { status: entry?.status === "seen" ? undefined : "seen", ...patch }));
 
   const scheduleNotes = (value: string) => {
+    editingNotes.current = true;
     setNotes(value);
     if (notesTimer.current) clearTimeout(notesTimer.current);
     notesTimer.current = setTimeout(() => {
+      editingNotes.current = false;
       void run(() =>
-        current
-          ? patchMovie(movieId, { notes: value })
-          : saveMovie(movieId, { status: "watchlist", notes: value }),
+        saveMovie(movieId, { status: entry?.status ?? "watchlist", notes: value }),
       );
     }, 900);
   };
@@ -98,7 +84,7 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
 
       <div className="mt-4 flex flex-wrap gap-2">
         {STATUS_BUTTONS.map((button) => {
-          const active = current?.status === button.status;
+          const active = entry?.status === button.status;
           return (
             <button
               aria-pressed={active}
@@ -109,7 +95,7 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
               }`}
               disabled={saving}
               key={button.status}
-              onClick={() => void setStatus(button.status)}
+              onClick={() => void run(() => toggleStatus(movieId, button.status))}
               type="button"
             >
               <span aria-hidden>{button.icon}</span> {button.label}
@@ -118,16 +104,16 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
         })}
 
         <button
-          aria-pressed={current?.favorite ?? false}
+          aria-pressed={entry?.favorite ?? false}
           className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
-            current?.favorite
+            entry?.favorite
               ? "border-rose-400 bg-rose-400/15 text-rose-400"
               : "border-ink-600 text-mist-200 hover:border-rose-400/60 hover:text-rose-400"
           }`}
           disabled={saving}
-          onClick={() => void updateSeen({ favorite: !current?.favorite })}
-          type="button"
+          onClick={() => void updateSeen({ favorite: !entry?.favorite })}
           title={`Marquer « ${title} » comme coup de cœur`}
+          type="button"
         >
           ❤️ Coup de cœur
         </button>
@@ -140,7 +126,7 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
           </p>
           <RatingStars
             onChange={(value) => void updateSeen({ rating: value })}
-            value={current?.rating ?? null}
+            value={entry?.rating ?? null}
           />
         </div>
 
@@ -154,7 +140,7 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
               disabled={saving}
               onChange={(event) => void updateSeen({ watchedAt: event.target.value || null })}
               type="date"
-              value={current?.watchedAt ?? ""}
+              value={entry?.watchedAt ?? ""}
             />
           </label>
 
@@ -165,13 +151,13 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
             <input
               className="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-gold-500"
               disabled={saving}
-              min={0}
               max={99}
+              min={0}
               onChange={(event) =>
                 void updateSeen({ rewatchCount: Math.max(0, Number(event.target.value) || 0) })
               }
               type="number"
-              value={current?.rewatchCount ?? 0}
+              value={entry?.rewatchCount ?? 0}
             />
           </label>
         </div>
@@ -189,10 +175,10 @@ export function TrackingPanel({ movieId, title, entry }: TrackingPanelProps) {
           />
         </label>
 
-        {current && (
+        {entry && (
           <button
             className="text-xs text-mist-400 underline-offset-2 hover:text-rose-400 hover:underline"
-            onClick={() => void run(async () => (await removeMovie(movieId), null))}
+            onClick={() => removeMovie(movieId)}
             type="button"
           >
             Retirer ce film de ma bibliothèque

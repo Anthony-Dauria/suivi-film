@@ -1,6 +1,8 @@
+"use client";
+
 import { MovieCard, type MovieCardProps } from "@/components/MovieCard";
 
-/** Grille responsive d'affichés. */
+/** Grille responsive d'affiches. */
 export function MovieGrid({ movies }: { movies: MovieCardProps[] }) {
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
@@ -13,7 +15,7 @@ export function MovieGrid({ movies }: { movies: MovieCardProps[] }) {
   );
 }
 
-/** Carrousel horizontal, pour les sections secondaires de l'accueil. */
+/** Carrousel horizontal, pour les sections secondaires. */
 export function MovieRow({ movies }: { movies: MovieCardProps[] }) {
   return (
     <ul className="scroll-row">

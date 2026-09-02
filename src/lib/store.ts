@@ -1,34 +1,33 @@
-import "server-only";
-
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
+/**
+ * Bibliothèque personnelle, stockée dans le navigateur.
+ *
+ * Le site étant publié en statique (GitHub Pages), il n'y a pas de serveur pour
+ * conserver les données : tout vit dans `localStorage`, sur la machine de
+ * l'utilisateur. Les composants s'abonnent aux changements via `subscribe`, et
+ * l'evenement `storage` propage les modifications entre onglets.
+ */
 
 import type { Database, LibraryEntry, MovieSnapshot, Settings, WatchStatus } from "./types";
 
-const DATA_FILE = process.env.DATA_FILE
-  ? path.resolve(process.env.DATA_FILE)
-  : path.join(process.cwd(), "data", "bibliotheque.json");
+const STORAGE_KEY = "suivi-film:bibliotheque";
+/** La clé API est stockée à part pour ne jamais partir dans un export partagé. */
+const API_KEY_STORAGE_KEY = "suivi-film:cle-api";
 
-const DEFAULT_SETTINGS: Settings = {
+export const DEFAULT_SETTINGS: Settings = {
   providers: [],
-  region: process.env.TMDB_REGION?.trim() || "FR",
+  region: "FR",
+  language: "fr-FR",
   onlyMyProviders: false,
 };
 
 const EMPTY_DATABASE: Database = { version: 1, entries: {}, settings: DEFAULT_SETTINGS };
 
-/**
- * Cache mémoire invalide par la date de modification du fichier.
- *
- * En production, chaque route Next.js est compilee dans son propre bundle : un
- * cache purement mémoire ne serait pas partagé entre une ecriture faite par une
- * route API et une lecture faite par une page. On vérifie donc l'horodatage du
- * fichier à chaque accès, ce qui reste négligeable pour un fichier de cette
- * taille tout en garantissant des données fraiches.
- */
-let cache: { data: Database; mtimeMs: number; size: number } | null = null;
-let writeQueue: Promise<unknown> = Promise.resolve();
+const listeners = new Set<() => void>();
+let cache: Database | null = null;
+
+function isBrowser(): boolean {
+  return typeof window !== "undefined";
+}
 
 function normalise(raw: unknown): Database {
   if (!raw || typeof raw !== "object") return structuredClone(EMPTY_DATABASE);
@@ -40,197 +39,193 @@ function normalise(raw: unknown): Database {
   };
 }
 
-async function readFromDisk(): Promise<{ data: Database; mtimeMs: number; size: number }> {
+/** Lecture synchrone : le rendu peut s'appuyer dessus sans etat de chargement. */
+export function getDatabase(): Database {
+  if (cache) return cache;
+  if (!isBrowser()) return EMPTY_DATABASE;
   try {
-    const [content, info] = await Promise.all([readFile(DATA_FILE, "utf8"), stat(DATA_FILE)]);
-    return { data: normalise(JSON.parse(content)), mtimeMs: info.mtimeMs, size: info.size };
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code && code !== "ENOENT") {
-      console.error(`Lecture de ${DATA_FILE} impossible, démarrage sur une base vide.`, error);
-    }
-    return { data: structuredClone(EMPTY_DATABASE), mtimeMs: 0, size: 0 };
-  }
-}
-
-async function load(): Promise<Database> {
-  if (cache) {
-    try {
-      const info = await stat(DATA_FILE);
-      if (info.mtimeMs === cache.mtimeMs && info.size === cache.size) return cache.data;
-    } catch {
-      // Fichier supprimé entre-temps : on relit (et on repart d'une base vide).
-    }
-  }
-  cache = await readFromDisk();
-  return cache.data;
-}
-
-/** Écriture atomique : fichier temporaire puis renommage. */
-async function persist(database: Database): Promise<void> {
-  await mkdir(path.dirname(DATA_FILE), { recursive: true });
-  const temporary = `${DATA_FILE}.${randomUUID()}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(database, null, 2)}\n`, "utf8");
-  await rename(temporary, DATA_FILE);
-  try {
-    const info = await stat(DATA_FILE);
-    cache = { data: database, mtimeMs: info.mtimeMs, size: info.size };
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    cache = raw ? normalise(JSON.parse(raw)) : structuredClone(EMPTY_DATABASE);
   } catch {
-    cache = null;
+    cache = structuredClone(EMPTY_DATABASE);
   }
+  return cache;
 }
 
-async function mutate<T>(mutation: (database: Database) => T | Promise<T>): Promise<T> {
-  const run = async (): Promise<T> => {
-    // Relecture systématique : une autre route a pu écrire depuis notre dernier accès.
-    const { data: database } = await readFromDisk();
-    const result = await mutation(database);
-    await persist(database);
-    return result;
-  };
-  const chained = writeQueue.then(run, run);
-  // On garde la file vivante même si une mutation echoue.
-  writeQueue = chained.catch(() => undefined);
-  return chained;
+function commit(next: Database): void {
+  cache = next;
+  if (isBrowser()) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    } catch (error) {
+      console.error("Sauvegarde impossible : espace de stockage insuffisant.", error);
+    }
+  }
+  listeners.forEach((listener) => listener());
+}
+
+export function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+if (isBrowser()) {
+  // Un autre onglet a modifié la bibliothèque : on relit et on prévient l'interface.
+  window.addEventListener("storage", (event) => {
+    if (event.key !== STORAGE_KEY) return;
+    cache = null;
+    listeners.forEach((listener) => listener());
+  });
 }
 
 /* -------------------------------------------------------------------------- */
 /* Lecture                                                                     */
 /* -------------------------------------------------------------------------- */
 
-export async function getAllEntries(): Promise<LibraryEntry[]> {
-  const database = await load();
-  return Object.values(database.entries).sort(
+export function getAllEntries(): LibraryEntry[] {
+  return Object.values(getDatabase().entries).sort(
     (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
   );
 }
 
-export async function getEntry(movieId: number): Promise<LibraryEntry | null> {
-  const database = await load();
-  return database.entries[String(movieId)] ?? null;
+export function getEntry(movieId: number): LibraryEntry | null {
+  return getDatabase().entries[String(movieId)] ?? null;
 }
 
-export async function getEntriesByStatus(status: WatchStatus): Promise<LibraryEntry[]> {
-  return (await getAllEntries()).filter((entry) => entry.status === status);
+export function getSettings(): Settings {
+  return getDatabase().settings;
 }
 
-export async function getSettings(): Promise<Settings> {
-  return (await load()).settings;
+/* -------------------------------------------------------------------------- */
+/* Clé API                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Clé saisie par l'utilisateur. Elle a la priorité sur la clé éventuellement
+ * intégrée au build (`NEXT_PUBLIC_TMDB_API_KEY`), ce qui permet à chacun
+ * d'utiliser la sienne sur un site public.
+ */
+export function getStoredApiKey(): string | null {
+  if (!isBrowser()) return null;
+  try {
+    return window.localStorage.getItem(API_KEY_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredApiKey(key: string | null): void {
+  if (!isBrowser()) return;
+  try {
+    if (key) window.localStorage.setItem(API_KEY_STORAGE_KEY, key.trim());
+    else window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+  } catch (error) {
+    console.error("Enregistrement de la clé API impossible.", error);
+  }
+  listeners.forEach((listener) => listener());
 }
 
 /* -------------------------------------------------------------------------- */
 /* Écriture                                                                    */
 /* -------------------------------------------------------------------------- */
 
-export interface UpsertInput {
+export interface EntryPatch {
   status?: WatchStatus;
   rating?: number | null;
   favorite?: boolean;
   watchedAt?: string | null;
   notes?: string;
   rewatchCount?: number;
-  movie: MovieSnapshot;
 }
 
 /** Arrondit une note à un pas de 0,5 dans l'intervalle [0,5 ; 5]. */
 function sanitiseRating(rating: number | null | undefined): number | null {
   if (rating === null || rating === undefined || Number.isNaN(rating)) return null;
-  const rounded = Math.round(rating * 2) / 2;
-  return Math.min(5, Math.max(0.5, rounded));
+  return Math.min(5, Math.max(0.5, Math.round(rating * 2) / 2));
 }
 
-export async function upsertEntry(input: UpsertInput): Promise<LibraryEntry> {
-  return mutate((database) => {
-    const key = String(input.movie.id);
-    const now = new Date().toISOString();
-    const existing = database.entries[key];
-    const status = input.status ?? existing?.status ?? "watchlist";
-
-    const entry: LibraryEntry = {
-      id: input.movie.id,
-      status,
-      rating: input.rating !== undefined ? sanitiseRating(input.rating) : (existing?.rating ?? null),
-      favorite: input.favorite ?? existing?.favorite ?? false,
-      watchedAt:
-        input.watchedAt !== undefined
-          ? input.watchedAt
-          : (existing?.watchedAt ??
-            (status === "seen" ? now.slice(0, 10) : null)),
-      addedAt: existing?.addedAt ?? now,
-      updatedAt: now,
-      notes: input.notes !== undefined ? input.notes : (existing?.notes ?? ""),
-      rewatchCount: input.rewatchCount ?? existing?.rewatchCount ?? 0,
-      movie: { ...(existing?.movie ?? {}), ...input.movie },
-    };
-
-    // Passage à "vu" sans date : on date au jour du clic.
-    if (entry.status === "seen" && !entry.watchedAt) entry.watchedAt = now.slice(0, 10);
-    // Un film non vu ne conservé pas de note personnelle.
-    if (entry.status !== "seen") entry.rating = null;
-
-    database.entries[key] = entry;
-    return entry;
-  });
+/** Applique les règles métier communes à la création et à la mise à jour. */
+function finalise(entry: LibraryEntry): LibraryEntry {
+  const result = { ...entry };
+  if (result.status === "seen" && !result.watchedAt) {
+    result.watchedAt = new Date().toISOString().slice(0, 10);
+  }
+  // Un film non vu ne conserve pas de note personnelle.
+  if (result.status !== "seen") result.rating = null;
+  return result;
 }
 
-export async function updateEntry(
-  movieId: number,
-  patch: Omit<Partial<UpsertInput>, "movie">,
-): Promise<LibraryEntry | null> {
-  return mutate((database) => {
-    const key = String(movieId);
-    const existing = database.entries[key];
-    if (!existing) return null;
+export function upsertEntry(movie: MovieSnapshot, patch: EntryPatch = {}): LibraryEntry {
+  const database = getDatabase();
+  const key = String(movie.id);
+  const now = new Date().toISOString();
+  const existing = database.entries[key];
+  const status = patch.status ?? existing?.status ?? "watchlist";
 
-    const status = patch.status ?? existing.status;
-    const updated: LibraryEntry = {
-      ...existing,
-      status,
-      rating: patch.rating !== undefined ? sanitiseRating(patch.rating) : existing.rating,
-      favorite: patch.favorite ?? existing.favorite,
-      watchedAt: patch.watchedAt !== undefined ? patch.watchedAt : existing.watchedAt,
-      notes: patch.notes !== undefined ? patch.notes : existing.notes,
-      rewatchCount: patch.rewatchCount ?? existing.rewatchCount,
-      updatedAt: new Date().toISOString(),
-    };
-
-    if (updated.status === "seen" && !updated.watchedAt) {
-      updated.watchedAt = new Date().toISOString().slice(0, 10);
-    }
-    if (updated.status !== "seen") updated.rating = null;
-
-    database.entries[key] = updated;
-    return updated;
+  const entry = finalise({
+    id: movie.id,
+    status,
+    rating: patch.rating !== undefined ? sanitiseRating(patch.rating) : (existing?.rating ?? null),
+    favorite: patch.favorite ?? existing?.favorite ?? false,
+    watchedAt: patch.watchedAt !== undefined ? patch.watchedAt : (existing?.watchedAt ?? null),
+    addedAt: existing?.addedAt ?? now,
+    updatedAt: now,
+    notes: patch.notes !== undefined ? patch.notes : (existing?.notes ?? ""),
+    rewatchCount: patch.rewatchCount ?? existing?.rewatchCount ?? 0,
+    movie: { ...(existing?.movie ?? {}), ...movie },
   });
+
+  commit({ ...database, entries: { ...database.entries, [key]: entry } });
+  return entry;
 }
 
-export async function deleteEntry(movieId: number): Promise<boolean> {
-  return mutate((database) => {
-    const key = String(movieId);
-    if (!database.entries[key]) return false;
-    delete database.entries[key];
-    return true;
+export function updateEntry(movieId: number, patch: EntryPatch): LibraryEntry | null {
+  const database = getDatabase();
+  const key = String(movieId);
+  const existing = database.entries[key];
+  if (!existing) return null;
+
+  const entry = finalise({
+    ...existing,
+    status: patch.status ?? existing.status,
+    rating: patch.rating !== undefined ? sanitiseRating(patch.rating) : existing.rating,
+    favorite: patch.favorite ?? existing.favorite,
+    watchedAt: patch.watchedAt !== undefined ? patch.watchedAt : existing.watchedAt,
+    notes: patch.notes !== undefined ? patch.notes : existing.notes,
+    rewatchCount: patch.rewatchCount ?? existing.rewatchCount,
+    updatedAt: new Date().toISOString(),
   });
+
+  commit({ ...database, entries: { ...database.entries, [key]: entry } });
+  return entry;
 }
 
-export async function updateSettings(patch: Partial<Settings>): Promise<Settings> {
-  return mutate((database) => {
-    database.settings = { ...database.settings, ...patch };
-    return database.settings;
-  });
+export function deleteEntry(movieId: number): boolean {
+  const database = getDatabase();
+  const key = String(movieId);
+  if (!database.entries[key]) return false;
+
+  const entries = { ...database.entries };
+  delete entries[key];
+  commit({ ...database, entries });
+  return true;
+}
+
+export function updateSettings(patch: Partial<Settings>): Settings {
+  const database = getDatabase();
+  const settings = { ...database.settings, ...patch };
+  commit({ ...database, settings });
+  return settings;
 }
 
 /** Remplace toute la bibliothèque (import d'une sauvegarde). */
-export async function replaceDatabase(raw: unknown): Promise<Database> {
+export function replaceDatabase(raw: unknown): Database {
   const next = normalise(raw);
-  return mutate((database) => {
-    database.entries = next.entries;
-    database.settings = next.settings;
-    return { version: 1, entries: database.entries, settings: database.settings };
-  });
+  commit(next);
+  return next;
 }
 
-export async function exportDatabase(): Promise<Database> {
-  const database = await load();
-  return structuredClone(database);
+/** Sauvegarde téléchargeable (sans la clé API). */
+export function exportDatabase(): Database {
+  return structuredClone(getDatabase());
 }

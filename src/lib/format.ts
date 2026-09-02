@@ -46,10 +46,6 @@ export function formatRating(rating: number | null | undefined): string {
   return `${rating.toFixed(1).replace(".", ",")}/5`;
 }
 
-export function formatCount(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count.toLocaleString("fr-FR")} ${count > 1 ? plural : singular}`;
-}
-
 const STATUS_LABELS: Record<string, string> = {
   Released: "Sorti",
   "Post Production": "Post-production",

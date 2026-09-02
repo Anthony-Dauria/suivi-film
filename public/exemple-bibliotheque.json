@@ -18,20 +18,47 @@
         "posterPath": "/8IB2e4r4oVhHnANbnm7O3Tj6tF8.jpg",
         "backdropPath": "/s3TBrRGB1iav7gFOCNx3H31MoA4.jpg",
         "releaseDate": "2010-07-15",
-        "genreIds": [28, 878, 12],
+        "genreIds": [
+          28,
+          878,
+          12
+        ],
         "voteAverage": 8.4,
         "runtime": 148,
         "overview": "Dom Cobb est un voleur expérimenté dans l'extraction d'informations issues des reves.",
-        "directors": [{ "id": 525, "name": "Christopher Nolan" }],
+        "directors": [
+          {
+            "id": 525,
+            "name": "Christopher Nolan"
+          }
+        ],
         "cast": [
-          { "id": 6193, "name": "Leonardo DiCaprio" },
-          { "id": 24045, "name": "Joseph Gordon-Levitt" },
-          { "id": 27578, "name": "Elliot Page" }
+          {
+            "id": 6193,
+            "name": "Leonardo DiCaprio"
+          },
+          {
+            "id": 24045,
+            "name": "Joseph Gordon-Levitt"
+          },
+          {
+            "id": 27578,
+            "name": "Elliot Page"
+          }
         ],
         "keywords": [
-          { "id": 4565, "name": "dystopie" },
-          { "id": 9826, "name": "reve" },
-          { "id": 14544, "name": "braquage" }
+          {
+            "id": 4565,
+            "name": "dystopie"
+          },
+          {
+            "id": 9826,
+            "name": "reve"
+          },
+          {
+            "id": 14544,
+            "name": "braquage"
+          }
         ]
       }
     },
@@ -52,18 +79,39 @@
         "posterPath": "/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg",
         "backdropPath": "/TU9NIjwzjoKPwQHoHshkFcQUCG.jpg",
         "releaseDate": "2019-05-30",
-        "genreIds": [35, 53, 18],
+        "genreIds": [
+          35,
+          53,
+          18
+        ],
         "voteAverage": 8.5,
         "runtime": 133,
         "overview": "Toute la famille de Ki-taek est au chomage.",
-        "directors": [{ "id": 21684, "name": "Bong Joon-ho" }],
+        "directors": [
+          {
+            "id": 21684,
+            "name": "Bong Joon-ho"
+          }
+        ],
         "cast": [
-          { "id": 20738, "name": "Song Kang-ho" },
-          { "id": 1710490, "name": "Choi Woo-shik" }
+          {
+            "id": 20738,
+            "name": "Song Kang-ho"
+          },
+          {
+            "id": 1710490,
+            "name": "Choi Woo-shik"
+          }
         ],
         "keywords": [
-          { "id": 1353, "name": "lutte des classes" },
-          { "id": 10714, "name": "famille" }
+          {
+            "id": 1353,
+            "name": "lutte des classes"
+          },
+          {
+            "id": 10714,
+            "name": "famille"
+          }
         ]
       }
     },
@@ -84,25 +132,50 @@
         "posterPath": "/nBNZadXqJSdt05SHLqgT0HuC5Gm.jpg",
         "backdropPath": "/xJHokMbljvjADYdit5fK5VQsXEG.jpg",
         "releaseDate": "2014-11-05",
-        "genreIds": [12, 18, 878],
+        "genreIds": [
+          12,
+          18,
+          878
+        ],
         "voteAverage": 8.4,
         "runtime": 169,
         "overview": "Le film raconte les aventures d'un groupe d'explorateurs.",
-        "directors": [{ "id": 525, "name": "Christopher Nolan" }],
+        "directors": [
+          {
+            "id": 525,
+            "name": "Christopher Nolan"
+          }
+        ],
         "cast": [
-          { "id": 10297, "name": "Matthew McConaughey" },
-          { "id": 1893, "name": "Anne Hathaway" }
+          {
+            "id": 10297,
+            "name": "Matthew McConaughey"
+          },
+          {
+            "id": 1893,
+            "name": "Anne Hathaway"
+          }
         ],
         "keywords": [
-          { "id": 4379, "name": "voyage dans le temps" },
-          { "id": 14626, "name": "espace" }
+          {
+            "id": 4379,
+            "name": "voyage dans le temps"
+          },
+          {
+            "id": 14626,
+            "name": "espace"
+          }
         ]
       }
     }
   },
   "settings": {
-    "providers": [8, 119],
+    "providers": [
+      8,
+      119
+    ],
     "region": "FR",
+    "language": "fr-FR",
     "onlyMyProviders": false
   }
 }

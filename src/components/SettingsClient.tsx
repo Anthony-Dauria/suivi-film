@@ -4,16 +4,41 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ErrorNotice } from "@/components/ui";
-import { saveSettings } from "@/lib/client";
-import type { Settings, TmdbProvider } from "@/lib/types";
+import { clearCache } from "@/lib/cache";
+import { useApiKey, useIsConfigured, useSettings } from "@/lib/hooks";
+import {
+  exportDatabase,
+  replaceDatabase,
+  setStoredApiKey,
+  updateSettings,
+} from "@/lib/store";
+import { getAvailableProviders } from "@/lib/tmdb";
+import type { TmdbProvider } from "@/lib/types";
 
-interface SettingsClientProps {
-  configured: boolean;
-  region: string;
-}
+const REGIONS = [
+  { code: "FR", label: "France" },
+  { code: "BE", label: "Belgique" },
+  { code: "CH", label: "Suisse" },
+  { code: "CA", label: "Canada" },
+  { code: "LU", label: "Luxembourg" },
+  { code: "US", label: "États-Unis" },
+  { code: "GB", label: "Royaume-Uni" },
+];
 
-export function SettingsClient({ configured, region }: SettingsClientProps) {
-  const [settings, setSettings] = useState<Settings | null>(null);
+const LANGUAGES = [
+  { code: "fr-FR", label: "Français" },
+  { code: "en-US", label: "Anglais" },
+  { code: "es-ES", label: "Espagnol" },
+  { code: "de-DE", label: "Allemand" },
+  { code: "it-IT", label: "Italien" },
+];
+
+export function SettingsClient() {
+  const settings = useSettings();
+  const storedKey = useApiKey();
+  const configured = useIsConfigured();
+
+  const [keyDraft, setKeyDraft] = useState("");
   const [providers, setProviders] = useState<TmdbProvider[]>([]);
   const [filter, setFilter] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -21,59 +46,68 @@ export function SettingsClient({ configured, region }: SettingsClientProps) {
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((response) => response.json())
-      .then((data: { settings: Settings }) => setSettings(data.settings))
-      .catch(() => setError("Impossible de lire les réglages."));
-
-    if (configured) {
-      fetch("/api/providers")
-        .then((response) => response.json())
-        .then((data: { providers?: TmdbProvider[] }) => setProviders(data.providers ?? []))
-        .catch(() => undefined);
+    if (!configured) {
+      setProviders([]);
+      return;
     }
-  }, [configured]);
+    let cancelled = false;
+    getAvailableProviders()
+      .then((list) => {
+        if (!cancelled) setProviders(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [configured, storedKey, settings.region]);
+
+  const notify = (text: string) => {
+    setMessage(text);
+    setTimeout(() => setMessage(null), 2500);
+  };
 
   const visibleProviders = useMemo(() => {
     const normalised = filter.trim().toLowerCase();
-    const list = normalised
+    return normalised
       ? providers.filter((provider) => provider.provider_name.toLowerCase().includes(normalised))
       : providers.slice(0, 40);
-    return list;
   }, [providers, filter]);
 
-  const persist = async (patch: Partial<Settings>) => {
-    setError(null);
-    try {
-      const updated = await saveSettings(patch);
-      setSettings(updated);
-      setMessage("Réglages enregistrés.");
-      setTimeout(() => setMessage(null), 2500);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Enregistrement impossible.");
-    }
-  };
-
   const toggleProvider = (id: number) => {
-    if (!settings) return;
     const next = settings.providers.includes(id)
       ? settings.providers.filter((item) => item !== id)
       : [...settings.providers, id];
-    void persist({ providers: next });
+    updateSettings({ providers: next });
+  };
+
+  const saveKey = () => {
+    const trimmed = keyDraft.trim();
+    if (!trimmed) return;
+    setStoredApiKey(trimmed);
+    setKeyDraft("");
+    // Les réponses en cache ont pu être produites sans clé valide.
+    clearCache();
+    notify("Clé enregistrée. Elle reste sur cet appareil.");
+  };
+
+  const download = () => {
+    const blob = new Blob([`${JSON.stringify(exportDatabase(), null, 2)}\n`], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `suivi-film-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const importBackup = async (file: File) => {
     setError(null);
     try {
       const content = JSON.parse(await file.text()) as unknown;
-      const response = await fetch("/api/sauvegarde", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(content),
-      });
-      const data = (await response.json()) as { count?: number; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Import impossible.");
-      setMessage(`${data.count ?? 0} film(s) importe(s). Rechargez la page.`);
+      const database = replaceDatabase(content);
+      notify(`${Object.keys(database.entries).length} film(s) importé(s).`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Fichier de sauvegarde invalide.");
     }
@@ -84,7 +118,7 @@ export function SettingsClient({ configured, region }: SettingsClientProps) {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Réglages</h1>
         <p className="mt-1 text-sm text-mist-400">
-          Connexion à TMDB, plateformes suivies et sauvegarde de votre bibliothèque.
+          Connexion à TMDB, pays, plateformes suivies et sauvegarde de votre bibliothèque.
         </p>
       </div>
 
@@ -96,49 +130,131 @@ export function SettingsClient({ configured, region }: SettingsClientProps) {
       )}
 
       <section className="card p-5">
-        <h2 className="text-lg font-semibold">Connexion à TMDB</h2>
+        <h2 className="text-lg font-semibold">Clé API TMDB</h2>
         <p className="mt-2 text-sm text-mist-300">
           État :{" "}
           {configured ? (
-            <span className="font-semibold text-emerald-400">clé détectée</span>
+            <span className="font-semibold text-emerald-400">
+              {storedKey ? "clé enregistrée sur cet appareil" : "clé fournie par le site"}
+            </span>
           ) : (
-            <span className="font-semibold text-rose-400">aucune clé configuree</span>
-          )}{" "}
-          · Pays des disponibilités : <span className="font-semibold">{region}</span>
+            <span className="font-semibold text-rose-400">aucune clé configurée</span>
+          )}
         </p>
-        {!configured && (
-          <ol className="mt-3 list-inside list-decimal space-y-1 text-sm text-mist-300">
-            <li>
-              Créez un compte gratuit sur{" "}
-              <a
-                className="text-gold-400 underline-offset-2 hover:underline"
-                href="https://www.themoviedb.org/signup"
-                rel="noreferrer"
-                target="_blank"
-              >
-                themoviedb.org
-              </a>
-              .
-            </li>
-            <li>
-              Recuperez votre clé sur{" "}
-              <a
-                className="text-gold-400 underline-offset-2 hover:underline"
-                href="https://www.themoviedb.org/settings/api"
-                rel="noreferrer"
-                target="_blank"
-              >
-                la page API
-              </a>{" "}
-              (clé v3 ou jeton v4, les deux fonctionnent).
-            </li>
-            <li>
-              Créez un fichier <code className="text-gold-400">.env.local</code> à la racine du
-              projet contenant <code className="text-gold-400">TMDB_API_KEY=votre_clé</code>.
-            </li>
-            <li>Relancez la commande <code className="text-gold-400">npm run dev</code>.</li>
-          </ol>
-        )}
+
+        <ol className="mt-3 list-inside list-decimal space-y-1 text-sm text-mist-300">
+          <li>
+            Créez un compte gratuit sur{" "}
+            <a
+              className="text-gold-400 underline-offset-2 hover:underline"
+              href="https://www.themoviedb.org/signup"
+              rel="noreferrer"
+              target="_blank"
+            >
+              themoviedb.org
+            </a>
+            .
+          </li>
+          <li>
+            Récupérez votre clé sur{" "}
+            <a
+              className="text-gold-400 underline-offset-2 hover:underline"
+              href="https://www.themoviedb.org/settings/api"
+              rel="noreferrer"
+              target="_blank"
+            >
+              la page API
+            </a>{" "}
+            (clé v3 ou jeton v4, les deux fonctionnent).
+          </li>
+          <li>Collez-la ci-dessous.</li>
+        </ol>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <input
+            aria-label="Clé API TMDB"
+            autoComplete="off"
+            className="min-w-0 flex-1 rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 font-mono text-sm outline-none placeholder:text-mist-400 focus:border-gold-500"
+            onChange={(event) => setKeyDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") saveKey();
+            }}
+            placeholder={storedKey ? "Remplacer la clé enregistrée…" : "Collez votre clé TMDB…"}
+            type="password"
+            value={keyDraft}
+          />
+          <button
+            className="rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-gold-400 disabled:opacity-60"
+            disabled={!keyDraft.trim()}
+            onClick={saveKey}
+            type="button"
+          >
+            Enregistrer
+          </button>
+          {storedKey && (
+            <button
+              className="rounded-xl border border-ink-600 px-4 py-2 text-sm transition-colors hover:border-rose-400/60 hover:text-rose-400"
+              onClick={() => {
+                setStoredApiKey(null);
+                clearCache();
+                notify("Clé supprimée de cet appareil.");
+              }}
+              type="button"
+            >
+              Supprimer
+            </button>
+          )}
+        </div>
+
+        <p className="mt-2 text-xs text-mist-400">
+          La clé est conservée dans le stockage local de votre navigateur et n&apos;est envoyée
+          qu&apos;à l&apos;API TMDB. Elle ne quitte pas cet appareil et n&apos;est pas incluse dans
+          les sauvegardes exportées.
+        </p>
+      </section>
+
+      <section className="card p-5">
+        <h2 className="text-lg font-semibold">Pays et langue</h2>
+        <p className="mt-1 text-sm text-mist-400">
+          Le pays détermine les plateformes de streaming et les dates de sortie affichées.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
+            Pays
+            <select
+              className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm normal-case text-mist-200"
+              onChange={(event) => {
+                updateSettings({ region: event.target.value });
+                clearCache();
+              }}
+              value={settings.region}
+            >
+              {REGIONS.map((region) => (
+                <option key={region.code} value={region.code}>
+                  {region.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
+            Langue des fiches
+            <select
+              className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm normal-case text-mist-200"
+              onChange={(event) => {
+                updateSettings({ language: event.target.value });
+                clearCache();
+              }}
+              value={settings.language}
+            >
+              {LANGUAGES.map((language) => (
+                <option key={language.code} value={language.code}>
+                  {language.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </section>
 
       <section className="card p-5">
@@ -150,9 +266,9 @@ export function SettingsClient({ configured, region }: SettingsClientProps) {
 
         <label className="mt-4 flex items-center gap-2 text-sm text-mist-300">
           <input
-            checked={settings?.onlyMyProviders ?? false}
+            checked={settings.onlyMyProviders}
             className="size-4 accent-[var(--color-gold-500)]"
-            onChange={(event) => void persist({ onlyMyProviders: event.target.checked })}
+            onChange={(event) => updateSettings({ onlyMyProviders: event.target.checked })}
             type="checkbox"
           />
           Filtrer les recommandations sur mes plateformes par défaut
@@ -171,12 +287,12 @@ export function SettingsClient({ configured, region }: SettingsClientProps) {
           <p className="mt-4 text-sm text-mist-400">
             {configured
               ? "Chargement des plateformes…"
-              : "Configurez la clé API pour charger la liste des plateformes."}
+              : "Renseignez votre clé API pour charger la liste des plateformes."}
           </p>
         ) : (
           <ul className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {visibleProviders.map((provider) => {
-              const selected = settings?.providers.includes(provider.provider_id) ?? false;
+              const selected = settings.providers.includes(provider.provider_id);
               return (
                 <li key={provider.provider_id}>
                   <button
@@ -210,22 +326,33 @@ export function SettingsClient({ configured, region }: SettingsClientProps) {
       <section className="card p-5">
         <h2 className="text-lg font-semibold">Sauvegarde</h2>
         <p className="mt-1 text-sm text-mist-400">
-          Votre bibliothèque est stockée localement dans un simple fichier JSON. Exportez-la pour la
-          conserver ou la transférer.
+          Votre bibliothèque est enregistrée dans ce navigateur, sur cet appareil. Exportez-la
+          régulièrement : vider les données du site l&apos;effacerait définitivement.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
-          <a
+          <button
             className="rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-gold-400"
-            href="/api/sauvegarde"
+            onClick={download}
+            type="button"
           >
             Exporter ma bibliothèque
-          </a>
+          </button>
           <button
             className="rounded-xl border border-ink-600 px-4 py-2 text-sm font-medium transition-colors hover:border-gold-500/60 hover:text-gold-400"
             onClick={() => fileInput.current?.click()}
             type="button"
           >
             Importer une sauvegarde
+          </button>
+          <button
+            className="rounded-xl border border-ink-600 px-4 py-2 text-sm font-medium transition-colors hover:border-gold-500/60 hover:text-gold-400"
+            onClick={() => {
+              clearCache();
+              notify("Cache des fiches TMDB vidé.");
+            }}
+            type="button"
+          >
+            Vider le cache TMDB
           </button>
           <input
             accept="application/json"

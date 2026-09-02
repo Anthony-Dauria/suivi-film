@@ -1,5 +1,3 @@
-import "server-only";
-
 import { buildProfile, genreAffinity, type TasteProfile } from "./profile";
 import { getAllEntries, getSettings } from "./store";
 import {
@@ -257,7 +255,8 @@ export async function getRecommendations(
   options: RecommendationOptions = {},
 ): Promise<{ items: ScoredMovie[]; profile: TasteProfile }> {
   const limit = options.limit ?? 24;
-  const [entries, settings] = await Promise.all([getAllEntries(), getSettings()]);
+  const entries = getAllEntries();
+  const settings = getSettings();
   const profile = buildProfile(entries);
 
   const excluded = new Set<number>(

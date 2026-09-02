@@ -43,7 +43,10 @@ export interface LibraryEntry {
 export interface Settings {
   /** Identifiants TMDB des plateformes auxquelles l'utilisateur est abonné. */
   providers: number[];
+  /** Pays des disponibilités de streaming et des dates de sortie (ISO 3166-1). */
   region: string;
+  /** Langue des fiches (ISO 639-1 tiret ISO 3166-1). */
+  language: string;
   /** N'afficher en recommandation que les films disponibles sur mes plateformes. */
   onlyMyProviders: boolean;
 }

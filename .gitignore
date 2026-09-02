@@ -9,10 +9,6 @@ next-env.d.ts
 .env.local
 .env*.local
 
-# Base de donnees locale (bibliotheque personnelle)
-data/*.json
-!data/exemple-bibliotheque.json
-
 .DS_Store
 *.log
 npm-debug.log*

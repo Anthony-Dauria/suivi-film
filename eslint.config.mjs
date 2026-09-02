@@ -4,7 +4,7 @@ const compat = new FlatCompat({ baseDirectory: import.meta.dirname });
 
 /** Configuration ESLint (format plat) basee sur les regles recommandees par Next.js. */
 const config = [
-  { ignores: [".next/**", "node_modules/**", "data/**", "next-env.d.ts"] },
+  { ignores: [".next/**", "out/**", "node_modules/**", "data/**", "next-env.d.ts"] },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
 ];
 

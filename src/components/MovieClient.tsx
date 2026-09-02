@@ -1,16 +1,19 @@
-import type { Metadata } from "next";
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { CastRow } from "@/components/CastRow";
 import { MovieRow } from "@/components/MovieGrid";
 import { Poster } from "@/components/Poster";
 import { ProviderSection } from "@/components/ProviderSection";
 import { ScoreRing } from "@/components/ScoreRing";
-import { Trailer } from "@/components/Trailer";
 import { TrackingPanel } from "@/components/TrackingPanel";
-import { Chip, ErrorNotice, SectionHeader } from "@/components/ui";
+import { Trailer } from "@/components/Trailer";
+import { Chip, EmptyState, ErrorNotice, SectionHeader } from "@/components/ui";
+import { summaryToCard } from "@/lib/cards";
 import {
   formatDate,
   formatMoney,
@@ -18,81 +21,84 @@ import {
   releaseYear,
   translateStatus,
 } from "@/lib/format";
-import { getAllEntries, getEntry } from "@/lib/store";
-import { REGION, TmdbError, backdropUrl, getMovieDetails } from "@/lib/tmdb";
-import type { LibraryEntry, TmdbMovieSummary } from "@/lib/types";
+import { useIsConfigured, useSettings } from "@/lib/hooks";
+import { backdropUrl, getMovieDetails } from "@/lib/tmdb";
+import type { MovieDetails } from "@/lib/types";
 
-interface PageProps {
-  params: Promise<{ id: string }>;
-}
-
-async function loadMovie(rawId: string) {
+export function MovieClient() {
+  const configured = useIsConfigured();
+  const settings = useSettings();
+  const rawId = useSearchParams().get("id");
   const movieId = Number(rawId);
-  if (!Number.isInteger(movieId) || movieId <= 0) notFound();
-  try {
-    return await getMovieDetails(movieId);
-  } catch (error) {
-    if (error instanceof TmdbError && error.status === 404) notFound();
-    throw error;
-  }
-}
+  const valid = Number.isInteger(movieId) && movieId > 0;
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  try {
-    const details = await loadMovie((await params).id);
-    return {
-      title: `${details.title} (${releaseYear(details.releaseDate)})`,
-      description: details.overview.slice(0, 200) || undefined,
+  const [details, setDetails] = useState<MovieDetails | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!valid || !configured) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    setDetails(null);
+
+    getMovieDetails(movieId)
+      .then((data) => {
+        if (!cancelled) setDetails(data);
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) return;
+        setError(
+          cause instanceof Error ? cause.message : "Impossible de charger cette fiche.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
     };
-  } catch {
-    return { title: "Fiche film" };
-  }
-}
+  }, [movieId, valid, configured, settings.language, settings.region]);
 
-function toCard(movie: TmdbMovieSummary, entries: Map<number, LibraryEntry>) {
-  const entry = entries.get(movie.id);
-  return {
-    id: movie.id,
-    title: movie.title,
-    posterPath: movie.poster_path,
-    releaseDate: movie.release_date,
-    voteAverage: movie.vote_average,
-    status: entry?.status ?? null,
-    rating: entry?.rating ?? null,
-    favorite: entry?.favorite ?? false,
-  };
-}
-
-export default async function MoviePage({ params }: PageProps) {
-  const { id } = await params;
-
-  let details;
-  try {
-    details = await loadMovie(id);
-  } catch (error) {
+  if (!valid) {
     return (
-      <ErrorNotice
-        message={
-          error instanceof TmdbError
-            ? error.message
-            : "Impossible de charger cette fiche pour le moment."
-        }
+      <EmptyState
+        action={{ href: "/recherche", label: "Rechercher un film" }}
+        description="L'adresse de cette fiche est incomplète : aucun identifiant de film n'a été fourni."
+        title="Film introuvable"
       />
     );
   }
 
-  const [entry, allEntries] = await Promise.all([getEntry(details.id), getAllEntries()]);
-  const entryMap = new Map(allEntries.map((item) => [item.id, item]));
+  if (!configured) {
+    return (
+      <EmptyState
+        action={{ href: "/reglages", label: "Configurer ma clé" }}
+        description="Les fiches sont récupérées auprès de TMDB : renseignez votre clé pour les consulter."
+        title="Clé API TMDB manquante"
+      />
+    );
+  }
+
+  if (error) return <ErrorNotice message={error} />;
+
+  if (loading || !details) {
+    return <p className="py-16 text-center text-sm text-mist-400">Chargement de la fiche…</p>;
+  }
+
   const backdrop = backdropUrl(details.backdropPath);
 
   const suggestions = [...details.recommendations, ...details.similar]
-    .filter(
-      (movie, index, list) => list.findIndex((item) => item.id === movie.id) === index,
-    )
+    .filter((movie, index, list) => list.findIndex((item) => item.id === movie.id) === index)
     .slice(0, 18);
 
   const facts: { label: string; value: string | null }[] = [
-    { label: "Titre original", value: details.originalTitle !== details.title ? details.originalTitle : null },
+    {
+      label: "Titre original",
+      value: details.originalTitle !== details.title ? details.originalTitle : null,
+    },
     { label: "Sortie", value: formatDate(details.releaseDate) },
     { label: "Durée", value: formatRuntime(details.runtime) },
     { label: "Statut", value: translateStatus(details.status) },
@@ -106,7 +112,7 @@ export default async function MoviePage({ params }: PageProps) {
 
   return (
     <div className="space-y-8">
-      {/* En-tête facon fiche encyclopedique */}
+      {/* En-tête façon fiche encyclopédique */}
       <header className="relative overflow-hidden rounded-2xl border border-ink-700">
         {backdrop && (
           <Image
@@ -259,8 +265,8 @@ export default async function MoviePage({ params }: PageProps) {
         </div>
 
         <div className="space-y-6">
-          <TrackingPanel entry={entry} movieId={details.id} title={details.title} />
-          <ProviderSection providers={details.providers} region={REGION} />
+          <TrackingPanel movieId={details.id} title={details.title} />
+          <ProviderSection providers={details.providers} region={settings.region} />
         </div>
       </div>
 
@@ -270,7 +276,7 @@ export default async function MoviePage({ params }: PageProps) {
             subtitle="Sélection TMDB à partir de ce film"
             title="Dans le même esprit"
           />
-          <MovieRow movies={suggestions.map((movie) => toCard(movie, entryMap))} />
+          <MovieRow movies={suggestions.map(summaryToCard)} />
         </section>
       )}
 

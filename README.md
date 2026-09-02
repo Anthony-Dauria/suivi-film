@@ -5,8 +5,8 @@ que vous voulez voir, consulter une **fiche complète pour chaque film** (comme 
 synopsis, casting, durée, notes, budget, bande-annonce…), savoir **sur quelles plateformes le
 regarder**, et recevoir des **recommandations construites à partir de vos propres goûts**.
 
-Tout tourne en local : vos notes et votre historique restent sur votre machine, dans un simple
-fichier JSON.
+Le site est **entièrement statique** : il s'héberge gratuitement sur GitHub Pages, sans serveur
+ni base de données. Vos films, vos notes et votre clé API restent dans votre navigateur.
 
 ---
 
@@ -57,53 +57,61 @@ notes.
 
 ---
 
-## Installation
+## Publier le site sur GitHub Pages
+
+Le dépôt contient déjà le workflow `.github/workflows/deploy.yml`. Il compile le site et le
+publie à chaque envoi sur `main`.
+
+1. Dans le dépôt GitHub : **Settings → Pages → Build and deployment**, choisissez la source
+   **GitHub Actions**.
+2. Poussez sur `main` (ou lancez le workflow à la main depuis l'onglet **Actions**).
+3. Le site est en ligne sur `https://<votre-compte>.github.io/<nom-du-depot>/`.
+
+Le chemin de base est calculé automatiquement par le workflow : `/<nom-du-depot>` en général,
+racine du domaine si le dépôt s'appelle `<votre-compte>.github.io`. Pour un domaine
+personnalisé, ajoutez un fichier `public/CNAME` contenant votre domaine et laissez
+`NEXT_PUBLIC_BASE_PATH` vide dans le workflow.
+
+### Et la clé API TMDB ?
+
+L'application a besoin d'une clé TMDB (gratuite) pour interroger le catalogue. Deux approches :
+
+**1. Chaque visiteur saisit la sienne (par défaut, recommandé).**
+Au premier lancement, un bandeau invite à coller une clé dans **Réglages**. Elle est enregistrée
+dans le navigateur, n'est envoyée qu'à l'API TMDB, et n'apparaît ni dans le dépôt ni dans les
+sauvegardes exportées. C'est le mode adapté à un site public.
+
+**2. Une clé intégrée au site.**
+Ajoutez un secret `TMDB_API_KEY` dans **Settings → Secrets and variables → Actions** : le
+workflow l'injecte au build et le site fonctionne sans configuration pour le visiteur.
+⚠️ **Cette clé devient publique** : toute variable `NEXT_PUBLIC_*` est incluse dans le
+JavaScript envoyé au navigateur, donc lisible par n'importe qui. Ne l'utilisez que si le site
+reste strictement personnel. Une clé saisie dans les réglages a de toute façon la priorité.
+
+---
+
+## Utiliser l'application en local
 
 ### Prérequis
-- Node.js **20.9 ou supérieur**
-- Une clé API TMDB (gratuite)
-
-### 1. Installer les dépendances
+Node.js **20.9 ou supérieur**.
 
 ```bash
 npm install
-```
-
-### 2. Obtenir une clé API TMDB
-
-1. Créez un compte gratuit sur [themoviedb.org](https://www.themoviedb.org/signup).
-2. Rendez-vous sur [la page API de votre compte](https://www.themoviedb.org/settings/api) et
-   demandez une clé (usage personnel).
-3. Copiez soit la **clé API (v3)**, soit le **jeton d'accès en lecture (v4)** : l'application
-   détecte automatiquement le format.
-
-### 3. Configurer l'environnement
-
-```bash
-cp .env.example .env.local
-```
-
-Puis renseignez votre clé dans `.env.local` :
-
-```dotenv
-TMDB_API_KEY=votre_clé_ici
-TMDB_REGION=FR        # pays des plateformes et des dates de sortie
-TMDB_LANGUAGE=fr-FR   # langue des fiches
-```
-
-### 4. Lancer l'application
-
-```bash
 npm run dev
 ```
 
-L'application est disponible sur <http://localhost:3000>.
+L'application est disponible sur <http://localhost:3000>. Ouvrez **Réglages**, collez votre clé
+TMDB, c'est prêt — aucun fichier `.env` n'est nécessaire.
 
-Pour un usage quotidien, préférez la version optimisée :
+Pour obtenir une clé : créez un compte sur [themoviedb.org](https://www.themoviedb.org/signup),
+puis demandez une clé sur [la page API](https://www.themoviedb.org/settings/api). La **clé v3**
+comme le **jeton de lecture v4** fonctionnent, l'application détecte le format.
+
+Pour reproduire la version publiée :
 
 ```bash
-npm run build
-npm run start
+npm run build     # génère le site statique dans ./out
+npx serve out     # ou n'importe quel serveur de fichiers
 ```
 
 ---
@@ -119,62 +127,76 @@ npm run start
 > Le moteur devient réellement personnalisé à partir de trois films notés. En dessous, il
 > complète avec des incontournables et les tendances de la semaine.
 
+Pour voir l'interface remplie sans rien saisir, importez le fichier
+`public/exemple-bibliotheque.json` depuis **Réglages → Importer une sauvegarde**.
+
 ---
 
-## Stockage des données
+## Où sont mes données ?
 
-La bibliothèque est enregistrée dans `data/bibliotheque.json` (créé au premier ajout, ignoré par
-Git). Les écritures sont **atomiques** — écriture d'un fichier temporaire puis renommage — et
-sérialisées, pour ne jamais corrompre le fichier.
+Tout est stocké dans le **stockage local du navigateur**, sur votre appareil :
 
-- Pour changer d'emplacement : variable d'environnement `DATA_FILE`.
-- Pour sauvegarder : **Réglages → Exporter ma bibliothèque** (ou copiez simplement le fichier).
-- `data/exemple-bibliotheque.json` contient un jeu de données d'exemple ; copiez-le en
-  `data/bibliotheque.json` pour voir l'application remplie.
+| Clé | Contenu |
+| --- | --- |
+| `suivi-film:bibliotheque` | films suivis, notes, réglages |
+| `suivi-film:cle-api` | votre clé TMDB |
+| `suivi-film:cache:…` | réponses TMDB mises en cache |
+
+Conséquences à connaître :
+
+- Rien n'est envoyé ailleurs qu'à TMDB : il n'y a pas de compte, pas de serveur, pas de suivi.
+- Les données sont **propres à ce navigateur et à cet appareil**. Vider les données du site les
+  efface définitivement.
+- **Exportez régulièrement** votre bibliothèque (**Réglages → Exporter**) : le fichier JSON
+  obtenu se réimporte sur un autre appareil ou après un nettoyage du navigateur.
 
 ---
 
 ## Structure du projet
 
 ```
+.github/workflows/deploy.yml   Compilation et publication sur GitHub Pages
+public/                        Fichiers servis tels quels (.nojekyll, exemple de bibliothèque)
 src/
 ├── app/
-│   ├── page.tsx                 Accueil : tableau de bord et sélection du jour
-│   ├── recherche/               Recherche instantanée dans le catalogue TMDB
-│   ├── bibliotheque/            Bibliothèque personnelle, filtres et tris
-│   ├── recommandations/         Recommandations expliquées + filtres
-│   ├── statistiques/            Tableaux de bord de visionnage
-│   ├── reglages/                Clé API, plateformes, sauvegarde
-│   ├── film/[id]/               Fiche détaillée d'un film
-│   └── api/                     Routes serveur (recherche, fiches, bibliothèque, réglages…)
-├── components/                  Composants d'interface réutilisables
+│   ├── page.tsx               Accueil : tableau de bord et sélection du jour
+│   ├── recherche/             Recherche instantanée dans le catalogue TMDB
+│   ├── bibliotheque/          Bibliothèque personnelle, filtres et tris
+│   ├── recommandations/       Recommandations expliquées + filtres
+│   ├── statistiques/          Tableaux de bord de visionnage
+│   ├── reglages/              Clé API, pays, plateformes, sauvegarde
+│   └── film/                  Fiche détaillée (adresse : /film/?id=27205)
+├── components/                Composants d'interface
 └── lib/
-    ├── tmdb.ts                  Client TMDB (auth v3/v4, cache, normalisation)
-    ├── store.ts                 Persistance JSON atomique de la bibliothèque
-    ├── profile.ts               Construction du profil de goût
-    ├── reco.ts                  Moteur de recommandation
-    ├── stats.ts                 Calcul des statistiques
-    └── types.ts                 Types partagés
+    ├── tmdb.ts                Client TMDB (auth v3/v4, normalisation des réponses)
+    ├── cache.ts               Cache des réponses, mutualisation et plafond de requêtes
+    ├── store.ts               Bibliothèque persistée dans le navigateur
+    ├── hooks.ts               Abonnement React au stockage local
+    ├── library.ts             Actions de suivi (ajout, statut, suppression)
+    ├── profile.ts             Construction du profil de goût
+    ├── reco.ts                Moteur de recommandation
+    ├── stats.ts               Calcul des statistiques
+    └── types.ts               Types partagés
 ```
 
-La clé API n'est **jamais** exposée au navigateur : tous les appels TMDB passent par le serveur
-Next.js, qui met les réponses en cache (de 10 minutes pour une recherche à une semaine pour la
-liste des genres).
+Le site n'ayant pas de serveur, les appels partent du navigateur vers l'API TMDB (qui autorise
+les requêtes cross-origin). `cache.ts` conserve les réponses (10 minutes pour une recherche, 12 h
+pour une fiche, une semaine pour la liste des plateformes), mutualise les requêtes identiques et
+limite le nombre d'appels simultanés.
 
 ## Scripts
 
 | Commande | Rôle |
 | --- | --- |
 | `npm run dev` | Serveur de développement |
-| `npm run build` | Build de production |
-| `npm run start` | Serveur de production |
+| `npm run build` | Génère le site statique dans `out/` |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | Vérification TypeScript |
 
 ## Pile technique
 
-Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · API TMDB.
-Aucune base de données à installer, aucun compte à créer en dehors de TMDB.
+Next.js 15 en export statique · React 19 · TypeScript · Tailwind CSS 4 · API TMDB.
+Aucune base de données, aucun serveur, aucun compte à créer en dehors de TMDB.
 
 ---
 

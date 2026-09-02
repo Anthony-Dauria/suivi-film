@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 
 import { Poster } from "@/components/Poster";
@@ -5,6 +7,7 @@ import { ProviderStrip } from "@/components/ProviderStrip";
 import { QuickActions } from "@/components/QuickActions";
 import { VoteBadge } from "@/components/VoteBadge";
 import { releaseYear } from "@/lib/format";
+import { useEntry } from "@/lib/hooks";
 import type { WatchProviders, WatchStatus } from "@/lib/types";
 
 export interface MovieCardProps {
@@ -13,11 +16,7 @@ export interface MovieCardProps {
   posterPath: string | null;
   releaseDate: string | null;
   voteAverage?: number;
-  /** Statut du film dans la bibliothèque, s'il y figure. */
-  status?: WatchStatus | null;
-  /** Note personnelle sur 5. */
-  rating?: number | null;
-  favorite?: boolean;
+  /** Raisons de la suggestion, affichées sous l'affiche. */
   reasons?: string[];
   providers?: WatchProviders | null;
   showActions?: boolean;
@@ -30,27 +29,30 @@ const STATUS_BADGES: Record<WatchStatus, { label: string; className: string }> =
   dismissed: { label: "Écarté", className: "border-ink-500 text-mist-400" },
 };
 
+/**
+ * Vignette d'un film. Le statut, la note et le coup de cœur sont lus
+ * directement dans la bibliothèque : la carte se met à jour d'elle-même après
+ * une action, où qu'elle soit affichée.
+ */
 export function MovieCard({
   id,
   title,
   posterPath,
   releaseDate,
   voteAverage,
-  status,
-  rating,
-  favorite,
   reasons,
   providers,
   showActions = true,
   priority,
 }: MovieCardProps) {
-  const badge = status ? STATUS_BADGES[status] : null;
+  const entry = useEntry(id);
+  const badge = entry ? STATUS_BADGES[entry.status] : null;
 
   return (
     <article className="group animate-rise">
       <Link
         className="relative block overflow-hidden rounded-xl border border-ink-700 bg-ink-850 transition-transform duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-500 group-hover:-translate-y-1 group-hover:border-ink-500"
-        href={`/film/${id}`}
+        href={`/film/?id=${id}`}
       >
         <Poster
           alt={`Affiche du film ${title}`}
@@ -70,7 +72,7 @@ export function MovieCard({
           )}
         </div>
 
-        {favorite && (
+        {entry?.favorite && (
           <span
             aria-label="Coup de cœur"
             className="absolute bottom-2 right-2 text-lg drop-shadow"
@@ -83,14 +85,17 @@ export function MovieCard({
 
       <div className="mt-2 space-y-1">
         <h3 className="text-sm font-semibold leading-snug text-mist-200">
-          <Link className="hover:text-gold-400" href={`/film/${id}`}>
+          <Link className="hover:text-gold-400" href={`/film/?id=${id}`}>
             {title}
           </Link>
         </h3>
         <p className="text-xs text-mist-400">
           {releaseYear(releaseDate)}
-          {rating !== null && rating !== undefined && (
-            <span className="text-gold-400"> · ma note {rating.toFixed(1).replace(".", ",")}/5</span>
+          {entry?.rating != null && (
+            <span className="text-gold-400">
+              {" "}
+              · ma note {entry.rating.toFixed(1).replace(".", ",")}/5
+            </span>
           )}
         </p>
 
@@ -111,7 +116,7 @@ export function MovieCard({
 
         {showActions && (
           <div className="pt-1 opacity-90 transition-opacity group-hover:opacity-100">
-            <QuickActions compact current={status ?? null} movieId={id} />
+            <QuickActions compact movieId={id} />
           </div>
         )}
       </div>

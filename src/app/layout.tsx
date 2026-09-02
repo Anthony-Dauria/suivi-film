@@ -3,7 +3,6 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { NavBar } from "@/components/NavBar";
 import { SetupBanner } from "@/components/SetupBanner";
-import { isConfigured } from "@/lib/tmdb";
 
 export const metadata: Metadata = {
   title: {
@@ -23,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="fr">
       <body className="font-sans antialiased">
         <NavBar />
-        {!isConfigured() && <SetupBanner />}
+        <SetupBanner />
         <main className="mx-auto w-full max-w-7xl px-4 pb-24 pt-6 sm:px-6 lg:px-8">
           {children}
         </main>

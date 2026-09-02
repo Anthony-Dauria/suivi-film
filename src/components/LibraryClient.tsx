@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 
 import { MovieGrid } from "@/components/MovieGrid";
-import { EmptyState, ErrorNotice } from "@/components/ui";
-import { fetchLibrary } from "@/lib/client";
+import { EmptyState } from "@/components/ui";
+import { entryToCard } from "@/lib/cards";
 import { GENRE_LIST, genreName } from "@/lib/genres";
+import { useEntries } from "@/lib/hooks";
 import type { LibraryEntry, WatchStatus } from "@/lib/types";
 
 type Tab = WatchStatus | "all" | "favorites";
@@ -48,24 +50,20 @@ function compare(a: LibraryEntry, b: LibraryEntry, sort: SortKey): number {
   }
 }
 
-export function LibraryClient({ initialTab }: { initialTab: Tab }) {
-  const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>(initialTab);
+const TAB_KEYS: Tab[] = ["seen", "watchlist", "dismissed", "favorites", "all"];
+
+export function LibraryClient() {
+  const entries = useEntries();
+  const requestedTab = useSearchParams().get("statut");
+  const [tab, setTab] = useState<Tab>(
+    TAB_KEYS.includes(requestedTab as Tab) ? (requestedTab as Tab) : "seen",
+  );
   const [sort, setSort] = useState<SortKey>("updated");
   const [genre, setGenre] = useState(0);
   const [term, setTerm] = useState("");
 
-  useEffect(() => {
-    fetchLibrary()
-      .then((data) => setEntries(data.entries))
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "Chargement impossible."),
-      );
-  }, []);
-
   const counts = useMemo(() => {
-    const list = entries ?? [];
+    const list = entries;
     return {
       seen: list.filter((entry) => entry.status === "seen").length,
       watchlist: list.filter((entry) => entry.status === "watchlist").length,
@@ -78,7 +76,7 @@ export function LibraryClient({ initialTab }: { initialTab: Tab }) {
   /** Genres réellement presents dans la bibliothèque, pour ne pas polluer le filtre. */
   const availableGenres = useMemo(() => {
     const present = new Set<number>();
-    for (const entry of entries ?? []) {
+    for (const entry of entries) {
       for (const id of entry.movie.genreIds ?? []) present.add(id);
     }
     return GENRE_LIST.filter((item) => present.has(item.id));
@@ -86,7 +84,7 @@ export function LibraryClient({ initialTab }: { initialTab: Tab }) {
 
   const visible = useMemo(() => {
     const normalised = term.trim().toLowerCase();
-    return (entries ?? [])
+    return entries
       .filter((entry) => matchesTab(entry, tab))
       .filter((entry) => genre === 0 || (entry.movie.genreIds ?? []).includes(genre))
       .filter(
@@ -101,16 +99,12 @@ export function LibraryClient({ initialTab }: { initialTab: Tab }) {
       .sort((a, b) => compare(a, b, sort));
   }, [entries, tab, genre, term, sort]);
 
-  if (error) return <ErrorNotice message={error} />;
-
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Ma bibliothèque</h1>
         <p className="mt-1 text-sm text-mist-400">
-          {entries === null
-            ? "Chargement…"
-            : `${counts.all} film${counts.all > 1 ? "s" : ""} suivi${counts.all > 1 ? "s" : ""}`}
+          {`${counts.all} film${counts.all > 1 ? "s" : ""} suivi${counts.all > 1 ? "s" : ""}`}
         </p>
       </div>
 
@@ -171,7 +165,7 @@ export function LibraryClient({ initialTab }: { initialTab: Tab }) {
         </select>
       </div>
 
-      {entries !== null && visible.length === 0 ? (
+      {visible.length === 0 ? (
         <EmptyState
           action={{ href: "/recherche", label: "Chercher un film" }}
           description={
@@ -184,14 +178,7 @@ export function LibraryClient({ initialTab }: { initialTab: Tab }) {
       ) : (
         <MovieGrid
           movies={visible.map((entry) => ({
-            id: entry.id,
-            title: entry.movie.title,
-            posterPath: entry.movie.posterPath,
-            releaseDate: entry.movie.releaseDate,
-            voteAverage: entry.movie.voteAverage,
-            status: entry.status,
-            rating: entry.rating,
-            favorite: entry.favorite,
+            ...entryToCard(entry),
             reasons:
               genre !== 0 && entry.movie.genreIds?.includes(genre)
                 ? [genreName(genre)]
