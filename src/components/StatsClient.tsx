@@ -29,7 +29,7 @@ export function StatsClient() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Statistiques</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Statistiques</h1>
         <p className="mt-1 text-sm text-mist-400">
           Une lecture de vos habitudes de spectateur, calculée sur les films marqués comme vus.
         </p>

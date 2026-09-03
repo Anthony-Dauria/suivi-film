@@ -5,16 +5,27 @@ que vous voulez voir, consulter une **fiche complète pour chaque film** (comme 
 synopsis, casting, durée, notes, budget, bande-annonce…), savoir **sur quelles plateformes le
 regarder**, et recevoir des **recommandations construites à partir de vos propres goûts**.
 
-Le site est **entièrement statique** : il s'héberge gratuitement sur GitHub Pages, sans serveur
-ni base de données. Vos films, vos notes et votre clé API restent dans votre navigateur.
+Pensée pour le téléphone — barre d'onglets, gestes au pouce, installation sur l'écran d'accueil —
+et **entièrement statique** : elle s'héberge gratuitement sur GitHub Pages, sans serveur ni base
+de données. Vos films, vos notes et votre clé API restent dans votre navigateur.
 
 ---
 
 ## Fonctionnalités
 
+### Une application, pas un site
+- **Barre d'onglets** en bas de l'écran : accueil, recherche, bibliothèque, recommandations et
+  statistiques toujours à portée du pouce.
+- **Installable** : « Ajouter à l'écran d'accueil » depuis Safari ou Chrome, et l'application
+  s'ouvre en plein écran, sans barre d'adresse, avec sa propre icône.
+- Marges respectant l'encoche et la barre d'accueil, cibles tactiles confortables, et un
+  **message de confirmation** à chaque ajout : on voit ce qui vient d'être enregistré même quand
+  le doigt masque la vignette.
+
 ### Bibliothèque personnelle
 - Trois statuts par film : **vu**, **à voir**, **pas intéressé** (ce dernier exclut le film des
-  recommandations).
+  recommandations). Le statut apparaît en toutes lettres sous chaque affiche, le bouton
+  correspondant se remplit de sa couleur, et la vignette prend un liseré assorti.
 - **Note sur 5 étoiles** par demi-étoile, **coup de cœur**, **date de visionnage**, **nombre de
   revisionnages** et **notes personnelles** en texte libre.
 - Filtres par statut, genre, titre ou réalisateur ; tris par note, date de sortie, date de

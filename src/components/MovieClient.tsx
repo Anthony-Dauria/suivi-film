@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { CastRow } from "@/components/CastRow";
+import { BackIcon, PlayIcon } from "@/components/icons";
 import { MovieRow } from "@/components/MovieGrid";
 import { Poster } from "@/components/Poster";
 import { ProviderSection } from "@/components/ProviderSection";
@@ -26,6 +27,7 @@ import { backdropUrl, getMovieDetails } from "@/lib/tmdb";
 import type { MovieDetails } from "@/lib/types";
 
 export function MovieClient() {
+  const router = useRouter();
   const configured = useIsConfigured();
   const settings = useSettings();
   const rawId = useSearchParams().get("id");
@@ -111,7 +113,16 @@ export function MovieClient() {
   ].filter((fact) => Boolean(fact.value));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <button
+        className="-ml-2 flex items-center gap-1 rounded-lg px-2 py-2 text-sm text-mist-300 active:text-gold-400"
+        onClick={() => router.back()}
+        type="button"
+      >
+        <BackIcon className="size-5" />
+        Retour
+      </button>
+
       {/* En-tête façon fiche encyclopédique */}
       <header className="relative overflow-hidden rounded-2xl border border-ink-700">
         {backdrop && (
@@ -124,9 +135,9 @@ export function MovieClient() {
             src={backdrop}
           />
         )}
-        <div className="relative bg-gradient-to-t from-ink-950 via-ink-950/85 to-ink-950/45 p-5 sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row">
-            <div className="w-40 shrink-0 overflow-hidden rounded-xl border border-ink-700 shadow-2xl sm:w-52">
+        <div className="relative bg-gradient-to-t from-ink-950 via-ink-950/85 to-ink-950/45 p-4 sm:p-8">
+          <div className="flex gap-4 sm:gap-6">
+            <div className="w-28 shrink-0 self-start overflow-hidden rounded-xl border border-ink-700 shadow-2xl sm:w-52">
               <Poster
                 alt={`Affiche de ${details.title}`}
                 className="h-auto w-full"
@@ -137,7 +148,7 @@ export function MovieClient() {
             </div>
 
             <div className="min-w-0 flex-1">
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              <h1 className="text-xl font-bold leading-tight tracking-tight sm:text-4xl">
                 {details.title}{" "}
                 <span className="font-normal text-mist-400">
                   ({releaseYear(details.releaseDate)})
@@ -148,21 +159,23 @@ export function MovieClient() {
                 <p className="mt-1 text-sm italic text-gold-400">« {details.tagline} »</p>
               )}
 
-              <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mist-300">
+              {/* Séparateurs inclus dans le texte : au retour à la ligne, aucun
+                  point ne reste orphelin en fin de ligne. */}
+              <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mist-300">
                 {details.certification && (
                   <span className="rounded border border-ink-500 px-1.5 py-0.5 text-xs">
                     {details.certification}
                   </span>
                 )}
-                <span>{formatDate(details.releaseDate)}</span>
-                <span aria-hidden>·</span>
-                <span>{formatRuntime(details.runtime)}</span>
-                {details.genres.length > 0 && (
-                  <>
-                    <span aria-hidden>·</span>
-                    <span>{details.genres.map((genre) => genre.name).join(", ")}</span>
-                  </>
-                )}
+                <span>
+                  {[
+                    formatDate(details.releaseDate),
+                    formatRuntime(details.runtime),
+                    details.genres.map((genre) => genre.name).join(", ") || null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
               </p>
 
               {details.directors.length > 0 && (
@@ -176,45 +189,49 @@ export function MovieClient() {
                 <ScoreRing count={details.voteCount} vote={details.voteAverage} />
               </div>
 
-              <div className="mt-4 flex flex-wrap gap-3 text-sm">
-                {details.trailer && (
-                  <a
-                    className="rounded-xl bg-gold-500 px-4 py-2 font-semibold text-ink-950 transition-colors hover:bg-gold-400"
-                    href={`https://www.youtube.com/watch?v=${details.trailer.key}`}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    ▶ Bande-annonce
-                  </a>
-                )}
-                {details.imdbId && (
-                  <a
-                    className="rounded-xl border border-ink-600 px-4 py-2 text-mist-200 transition-colors hover:border-gold-500/60 hover:text-gold-400"
-                    href={`https://www.imdb.com/title/${details.imdbId}/`}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    IMDb
-                  </a>
-                )}
-                {details.homepage && (
-                  <a
-                    className="rounded-xl border border-ink-600 px-4 py-2 text-mist-200 transition-colors hover:border-gold-500/60 hover:text-gold-400"
-                    href={details.homepage}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Site officiel
-                  </a>
-                )}
-              </div>
             </div>
           </div>
+
+            <div className="mt-4 flex flex-wrap gap-3 text-sm">
+              {details.trailer && (
+                <a
+                  className="flex min-h-11 items-center gap-2 rounded-xl bg-gold-500 px-4 py-2 font-semibold text-ink-950"
+                  href={`https://www.youtube.com/watch?v=${details.trailer.key}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <PlayIcon className="size-4" />
+                  Bande-annonce
+                </a>
+              )}
+              {details.imdbId && (
+                <a
+                  className="flex min-h-11 items-center rounded-xl border border-ink-600 px-4 py-2 text-mist-200"
+                  href={`https://www.imdb.com/title/${details.imdbId}/`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  IMDb
+                </a>
+              )}
+              {details.homepage && (
+                <a
+                  className="flex min-h-11 items-center rounded-xl border border-ink-600 px-4 py-2 text-mist-200"
+                  href={details.homepage}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Site officiel
+                </a>
+              )}
+            </div>
         </div>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-6">
+        {/* Sur mobile, le suivi et les plateformes passent avant la fiche :
+            ce sont les actions que l'on vient chercher. */}
+        <div className="order-2 min-w-0 space-y-6 lg:order-1">
           <section className="card p-5">
             <h2 className="text-lg font-semibold">Synopsis</h2>
             <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-mist-300">
@@ -264,7 +281,7 @@ export function MovieClient() {
           </section>
         </div>
 
-        <div className="space-y-6">
+        <div className="order-1 min-w-0 space-y-6 lg:order-2">
           <TrackingPanel movieId={details.id} title={details.title} />
           <ProviderSection providers={details.providers} region={settings.region} />
         </div>

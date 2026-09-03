@@ -116,7 +116,7 @@ export function SettingsClient() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Réglages</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Réglages</h1>
         <p className="mt-1 text-sm text-mist-400">
           Connexion à TMDB, pays, plateformes suivies et sauvegarde de votre bibliothèque.
         </p>
@@ -170,11 +170,12 @@ export function SettingsClient() {
           <li>Collez-la ci-dessous.</li>
         </ol>
 
-        <div className="mt-4 flex flex-wrap gap-2">
+        {/* Sur téléphone, le champ occupe toute la largeur : les boutons passent dessous. */}
+        <div className="mt-4 space-y-2">
           <input
             aria-label="Clé API TMDB"
             autoComplete="off"
-            className="min-w-0 flex-1 rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 font-mono text-sm outline-none placeholder:text-mist-400 focus:border-gold-500"
+            className="h-12 w-full rounded-xl border border-ink-600 bg-ink-900 px-3 font-mono text-sm outline-none placeholder:text-mist-400 focus:border-gold-500"
             onChange={(event) => setKeyDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") saveKey();
@@ -183,27 +184,29 @@ export function SettingsClient() {
             type="password"
             value={keyDraft}
           />
-          <button
-            className="rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-gold-400 disabled:opacity-60"
-            disabled={!keyDraft.trim()}
-            onClick={saveKey}
-            type="button"
-          >
-            Enregistrer
-          </button>
-          {storedKey && (
+          <div className="flex gap-2">
             <button
-              className="rounded-xl border border-ink-600 px-4 py-2 text-sm transition-colors hover:border-rose-400/60 hover:text-rose-400"
-              onClick={() => {
-                setStoredApiKey(null);
-                clearCache();
-                notify("Clé supprimée de cet appareil.");
-              }}
+              className="min-h-11 flex-1 rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 disabled:opacity-60 sm:flex-none"
+              disabled={!keyDraft.trim()}
+              onClick={saveKey}
               type="button"
             >
-              Supprimer
+              Enregistrer
             </button>
-          )}
+            {storedKey && (
+              <button
+                className="min-h-11 rounded-xl border border-ink-600 px-4 py-2 text-sm"
+                onClick={() => {
+                  setStoredApiKey(null);
+                  clearCache();
+                  notify("Clé supprimée de cet appareil.");
+                }}
+                type="button"
+              >
+                Supprimer
+              </button>
+            )}
+          </div>
         </div>
 
         <p className="mt-2 text-xs text-mist-400">
@@ -222,7 +225,7 @@ export function SettingsClient() {
           <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
             Pays
             <select
-              className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm normal-case text-mist-200"
+              className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm normal-case text-mist-200"
               onChange={(event) => {
                 updateSettings({ region: event.target.value });
                 clearCache();
@@ -240,7 +243,7 @@ export function SettingsClient() {
           <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
             Langue des fiches
             <select
-              className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm normal-case text-mist-200"
+              className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm normal-case text-mist-200"
               onChange={(event) => {
                 updateSettings({ language: event.target.value });
                 clearCache();
@@ -276,7 +279,7 @@ export function SettingsClient() {
 
         <input
           aria-label="Rechercher une plateforme"
-          className="mt-4 w-full rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm outline-none placeholder:text-mist-400 focus:border-gold-500"
+          className="mt-4 h-12 w-full rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm outline-none placeholder:text-mist-400 focus:border-gold-500"
           onChange={(event) => setFilter(event.target.value)}
           placeholder="Rechercher une plateforme (Netflix, Canal+, Disney…)"
           type="search"
@@ -329,23 +332,23 @@ export function SettingsClient() {
           Votre bibliothèque est enregistrée dans ce navigateur, sur cet appareil. Exportez-la
           régulièrement : vider les données du site l&apos;effacerait définitivement.
         </p>
-        <div className="mt-4 flex flex-wrap gap-3">
+        <div className="mt-4 grid gap-2 sm:flex sm:flex-wrap sm:gap-3">
           <button
-            className="rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-gold-400"
+            className="min-h-11 rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950"
             onClick={download}
             type="button"
           >
             Exporter ma bibliothèque
           </button>
           <button
-            className="rounded-xl border border-ink-600 px-4 py-2 text-sm font-medium transition-colors hover:border-gold-500/60 hover:text-gold-400"
+            className="min-h-11 rounded-xl border border-ink-600 px-4 py-2 text-sm font-medium"
             onClick={() => fileInput.current?.click()}
             type="button"
           >
             Importer une sauvegarde
           </button>
           <button
-            className="rounded-xl border border-ink-600 px-4 py-2 text-sm font-medium transition-colors hover:border-gold-500/60 hover:text-gold-400"
+            className="min-h-11 rounded-xl border border-ink-600 px-4 py-2 text-sm font-medium"
             onClick={() => {
               clearCache();
               notify("Cache des fiches TMDB vidé.");

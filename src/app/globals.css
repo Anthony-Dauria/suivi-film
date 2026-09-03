@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-@thème {
+@theme {
   --color-ink-950: #07090e;
   --color-ink-900: #0b0e15;
   --color-ink-850: #10141d;
@@ -22,6 +22,21 @@
 }
 
 :root {
+  /* Hauteur de la barre d'onglets, hors zone sûre du téléphone. */
+  --tab-bar-height: 60px;
+  /* Hauteur de la barre supérieure, hors encoche. */
+  --top-bar-height: 61px;
+}
+
+/* À partir d'une tablette, la barre d'onglets disparaît au profit du menu
+   horizontal : les éléments qui la surplombent redescendent. */
+@media (min-width: 768px) {
+  :root {
+    --tab-bar-height: 0px;
+  }
+}
+
+:root {
   color-scheme: dark;
 }
 
@@ -31,8 +46,16 @@ body {
   color: var(--color-mist-200);
 }
 
+html {
+  /* Le zoom en rotation ne doit pas modifier la taille du texte. */
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   min-height: 100dvh;
+  /* Filet de sécurité : aucun contenu ne doit provoquer de défilement latéral. */
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
   -webkit-font-smoothing: antialiased;
   background-image:
     radial-gradient(1200px 600px at 15% -10%, rgba(240, 180, 41, 0.09), transparent 60%),
@@ -40,7 +63,7 @@ body {
   background-attachment: fixed;
 }
 
-::sélection {
+::selection {
   background: rgba(240, 180, 41, 0.3);
 }
 
@@ -75,10 +98,15 @@ body {
 
 @utility scroll-row {
   display: flex;
-  gap: 1rem;
+  gap: 0.75rem;
+  /* `min-width: 0` empêche le contenu d'élargir la colonne parente : sans lui,
+     un carrousel de vingt vignettes fait déborder toute la page. */
+  min-width: 0;
   overflow-x: auto;
   scroll-snap-type: x proximity;
   padding-bottom: 0.75rem;
+  /* Le carrousel se prolonge jusqu'aux bords de l'écran sur mobile. */
+  scroll-padding-left: 1rem;
 }
 
 @utility line-clamp-3-safe {
@@ -102,4 +130,32 @@ body {
 
 @utility animate-rise {
   animation: rise 0.35s ease both;
+}
+
+/* Apparition du message de confirmation, depuis le bas. */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@utility animate-toast {
+  animation: toast-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+/* Zone principale : de la place sous le contenu pour la barre d'onglets. */
+@utility pb-tab-bar {
+  padding-bottom: calc(var(--tab-bar-height) + env(safe-area-inset-bottom) + 1.5rem);
+}
+
+/* Élément collant placé juste sous la barre supérieure. */
+@utility sticky-under-header {
+  position: sticky;
+  top: calc(var(--top-bar-height) + env(safe-area-inset-top));
+  z-index: 30;
 }

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { RatingStars } from "@/components/RatingStars";
 import { useEntry } from "@/lib/hooks";
 import { removeMovie, saveMovie, toggleStatus, type EntryPatch } from "@/lib/library";
+import { showToast } from "@/lib/toast";
 import type { WatchStatus } from "@/lib/types";
 
 interface TrackingPanelProps {
@@ -12,10 +13,35 @@ interface TrackingPanelProps {
   title: string;
 }
 
-const STATUS_BUTTONS: { status: WatchStatus; label: string; icon: string }[] = [
-  { status: "seen", label: "Je l'ai vu", icon: "✓" },
-  { status: "watchlist", label: "À voir", icon: "＋" },
-  { status: "dismissed", label: "Pas intéressé", icon: "✕" },
+const STATUS_BUTTONS: {
+  status: WatchStatus;
+  label: string;
+  icon: string;
+  /** Couleur du statut, identique à celle des vignettes. */
+  activeClassName: string;
+  confirmation: (title: string) => string;
+}[] = [
+  {
+    status: "seen",
+    label: "Je l'ai vu",
+    icon: "✓",
+    activeClassName: "border-emerald-400 bg-emerald-400 text-ink-950",
+    confirmation: (title) => `« ${title} » marqué comme vu`,
+  },
+  {
+    status: "watchlist",
+    label: "À voir",
+    icon: "＋",
+    activeClassName: "border-azure-400 bg-azure-400 text-ink-950",
+    confirmation: (title) => `« ${title} » ajouté à votre liste`,
+  },
+  {
+    status: "dismissed",
+    label: "Pas intéressé",
+    icon: "✕",
+    activeClassName: "border-mist-400 bg-mist-400 text-ink-950",
+    confirmation: (title) => `« ${title} » ne vous sera plus proposé`,
+  },
 ];
 
 /** Panneau de suivi personnel affiché sur la fiche d'un film. */
@@ -40,14 +66,17 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
     [],
   );
 
-  const run = async (action: () => Promise<unknown>) => {
+  const run = async (action: () => Promise<unknown>, confirmation?: string) => {
     setError(null);
     setSaving(true);
     try {
       await action();
       setSavedAt(new Date().toLocaleTimeString("fr-FR"));
+      if (confirmation) showToast(confirmation, "neutral");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Enregistrement impossible.");
+      const message = cause instanceof Error ? cause.message : "Enregistrement impossible.";
+      setError(message);
+      showToast(message, "error");
     } finally {
       setSaving(false);
     }
@@ -88,14 +117,19 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
           return (
             <button
               aria-pressed={active}
-              className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
-                active
-                  ? "border-gold-500 bg-gold-500 text-ink-950"
-                  : "border-ink-600 text-mist-200 hover:border-gold-500/60 hover:text-gold-400"
+              className={`min-h-11 whitespace-nowrap rounded-xl border px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${
+                active ? button.activeClassName : "border-ink-600 text-mist-200"
               }`}
               disabled={saving}
               key={button.status}
-              onClick={() => void run(() => toggleStatus(movieId, button.status))}
+              onClick={() =>
+                void run(
+                  () => toggleStatus(movieId, button.status),
+                  entry?.status === button.status
+                    ? `« ${title} » retiré de votre bibliothèque`
+                    : button.confirmation(title),
+                )
+              }
               type="button"
             >
               <span aria-hidden>{button.icon}</span> {button.label}
@@ -105,13 +139,18 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
 
         <button
           aria-pressed={entry?.favorite ?? false}
-          className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
+          className={`min-h-11 whitespace-nowrap rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-60 ${
             entry?.favorite
               ? "border-rose-400 bg-rose-400/15 text-rose-400"
               : "border-ink-600 text-mist-200 hover:border-rose-400/60 hover:text-rose-400"
           }`}
           disabled={saving}
-          onClick={() => void updateSeen({ favorite: !entry?.favorite })}
+          onClick={() =>
+            void run(
+              () => saveMovie(movieId, { status: entry?.status === "seen" ? undefined : "seen", favorite: !entry?.favorite }),
+              entry?.favorite ? "Coup de cœur retiré" : `« ${title} » ajouté à vos coups de cœur`,
+            )
+          }
           title={`Marquer « ${title} » comme coup de cœur`}
           type="button"
         >
@@ -178,7 +217,10 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
         {entry && (
           <button
             className="text-xs text-mist-400 underline-offset-2 hover:text-rose-400 hover:underline"
-            onClick={() => removeMovie(movieId)}
+            onClick={() => {
+              removeMovie(movieId);
+              showToast(`« ${title} » retiré de votre bibliothèque`, "neutral");
+            }}
             type="button"
           >
             Retirer ce film de ma bibliothèque

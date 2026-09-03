@@ -102,20 +102,20 @@ export function LibraryClient() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Ma bibliothèque</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Ma bibliothèque</h1>
         <p className="mt-1 text-sm text-mist-400">
           {`${counts.all} film${counts.all > 1 ? "s" : ""} suivi${counts.all > 1 ? "s" : ""}`}
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="scroll-row -mx-4 px-4 sm:mx-0 sm:flex-wrap sm:px-0">
         {TABS.map((item) => (
           <button
             aria-pressed={tab === item.key}
-            className={`rounded-xl border px-3.5 py-2 text-sm font-medium transition-colors ${
+            className={`min-h-11 shrink-0 whitespace-nowrap rounded-xl border px-3.5 text-sm font-medium transition-colors ${
               tab === item.key
                 ? "border-gold-500 bg-gold-500 text-ink-950"
-                : "border-ink-600 text-mist-200 hover:border-gold-500/60 hover:text-gold-400"
+                : "border-ink-600 text-mist-200"
             }`}
             key={item.key}
             onClick={() => setTab(item.key)}
@@ -127,10 +127,10 @@ export function LibraryClient() {
         ))}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <input
           aria-label="Filtrer par titre ou réalisateur"
-          className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm outline-none placeholder:text-mist-400 focus:border-gold-500"
+          className="col-span-2 h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm outline-none placeholder:text-mist-400 focus:border-gold-500 sm:col-span-1"
           onChange={(event) => setTerm(event.target.value)}
           placeholder="Filtrer par titre ou réalisateur…"
           type="search"
@@ -139,7 +139,7 @@ export function LibraryClient() {
 
         <select
           aria-label="Filtrer par genre"
-          className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-gold-500"
+          className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm outline-none focus:border-gold-500"
           onChange={(event) => setGenre(Number(event.target.value))}
           value={genre}
         >
@@ -153,7 +153,7 @@ export function LibraryClient() {
 
         <select
           aria-label="Trier"
-          className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-gold-500"
+          className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm outline-none focus:border-gold-500"
           onChange={(event) => setSort(event.target.value as SortKey)}
           value={sort}
         >

@@ -72,7 +72,7 @@ export function RecommendationsClient() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Recommandations pour vous</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Recommandations pour vous</h1>
         <p className="mt-1 max-w-3xl text-sm text-mist-400">
           Chaque proposition est calculée à partir de votre bibliothèque : films que vous avez le
           mieux notés, genres qui reviennent, thèmes récurrents, réalisateurs et acteurs que vous
@@ -107,11 +107,11 @@ export function RecommendationsClient() {
         </section>
       )}
 
-      <div className="card flex flex-wrap items-end gap-3 p-4">
+      <div className="card grid grid-cols-2 items-end gap-3 p-4 sm:flex sm:flex-wrap">
         <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
           Genre
           <select
-            className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm normal-case text-mist-200"
+            className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm normal-case text-mist-200"
             onChange={(event) => setGenreId(Number(event.target.value))}
             value={genreId}
           >
@@ -127,7 +127,7 @@ export function RecommendationsClient() {
         <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
           Durée
           <select
-            className="rounded-xl border border-ink-600 bg-ink-900 px-3 py-2 text-sm normal-case text-mist-200"
+            className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm normal-case text-mist-200"
             onChange={(event) => setMaxRuntime(Number(event.target.value))}
             value={maxRuntime}
           >
@@ -139,7 +139,7 @@ export function RecommendationsClient() {
           </select>
         </label>
 
-        <label className="flex items-center gap-2 pb-2 text-sm text-mist-300">
+        <label className="col-span-2 flex items-center gap-2 text-sm text-mist-300 sm:pb-2">
           <input
             checked={onlyMyProviders}
             className="size-4 accent-[var(--color-gold-500)]"
@@ -153,7 +153,7 @@ export function RecommendationsClient() {
         </label>
 
         <button
-          className="ml-auto rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 transition-colors hover:bg-gold-400 disabled:opacity-60"
+          className="col-span-2 min-h-11 rounded-xl bg-gold-500 px-4 py-2 text-sm font-semibold text-ink-950 disabled:opacity-60 sm:col-span-1 sm:ml-auto"
           disabled={loading}
           onClick={() => void compute()}
           type="button"

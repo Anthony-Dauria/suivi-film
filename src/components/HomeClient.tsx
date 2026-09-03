@@ -63,25 +63,27 @@ export function HomeClient() {
 
   return (
     <div className="space-y-10">
-      <section className="card overflow-hidden px-6 py-8 sm:px-10 sm:py-12">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gold-500">
+      {/* Sur téléphone, l'accueil va droit au but : recherche puis contenu.
+          Le texte de présentation n'apparaît qu'à partir d'une tablette. */}
+      <section className="card overflow-hidden px-4 py-5 sm:px-10 sm:py-12">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-gold-500">
           Votre carnet de films
         </p>
-        <h1 className="mt-2 max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">
+        <h1 className="mt-1.5 max-w-2xl text-xl font-bold tracking-tight sm:mt-2 sm:text-4xl">
           Notez ce que vous avez vu, découvrez quoi regarder ensuite.
         </h1>
-        <p className="mt-3 max-w-2xl text-sm text-mist-300">
+        <p className="mt-3 hidden max-w-2xl text-sm text-mist-300 sm:block">
           Chaque film dispose d&apos;une fiche complète — synopsis, casting, bande-annonce, note du
           public — et de la liste des plateformes où le voir. Plus vous notez, plus les
           recommandations vous ressemblent.
         </p>
-        <div className="mt-6 max-w-xl">
+        <div className="mt-4 max-w-xl sm:mt-6">
           <SearchLauncher />
         </div>
       </section>
 
       <section aria-label="Statistiques rapides">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <StatTile
             hint={stats.ratedCount > 0 ? `${stats.ratedCount} notés` : "Aucune note"}
             label="Films vus"

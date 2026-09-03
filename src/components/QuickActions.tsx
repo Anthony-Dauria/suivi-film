@@ -4,70 +4,107 @@ import { useState } from "react";
 
 import { useEntry } from "@/lib/hooks";
 import { removeMovie, toggleStatus } from "@/lib/library";
+import { showToast } from "@/lib/toast";
 import type { WatchStatus } from "@/lib/types";
 
 interface QuickActionsProps {
   movieId: number;
-  /** Affichage compact utilisé en survol de vignette. */
-  compact?: boolean;
+  /** Titre repris dans le message de confirmation. */
+  title: string;
 }
 
-const ACTIONS: { status: WatchStatus; label: string; icon: string; title: string }[] = [
-  { status: "seen", label: "Vu", icon: "✓", title: "Marquer comme vu" },
-  { status: "watchlist", label: "À voir", icon: "＋", title: "Ajouter à la liste à voir" },
-  { status: "dismissed", label: "Non merci", icon: "✕", title: "Ne plus me proposer ce film" },
+const ACTIONS: {
+  status: WatchStatus;
+  label: string;
+  title: string;
+  activeClassName: string;
+  added: (title: string) => string;
+}[] = [
+  {
+    status: "seen",
+    label: "Vu",
+    title: "Marquer comme vu",
+    activeClassName: "border-emerald-400 bg-emerald-400 text-ink-950",
+    added: (title) => `« ${title} » marqué comme vu`,
+  },
+  {
+    status: "watchlist",
+    label: "À voir",
+    title: "Ajouter à ma liste à voir",
+    activeClassName: "border-azure-400 bg-azure-400 text-ink-950",
+    added: (title) => `« ${title} » ajouté à votre liste`,
+  },
+  {
+    status: "dismissed",
+    label: "Non",
+    title: "Ne plus me proposer ce film",
+    activeClassName: "border-mist-400 bg-mist-400 text-ink-950",
+    added: (title) => `« ${title} » ne vous sera plus proposé`,
+  },
 ];
 
-/** Boutons de statut réutilisables (vignettes, recommandations). */
-export function QuickActions({ movieId, compact = false }: QuickActionsProps) {
+/**
+ * Trois boutons de statut sous une vignette.
+ *
+ * Le bouton actif est rempli de la couleur du statut, et chaque appui déclenche
+ * un message de confirmation : sur un téléphone, le doigt masque souvent la
+ * vignette au moment du geste.
+ */
+export function QuickActions({ movieId, title }: QuickActionsProps) {
   const entry = useEntry(movieId);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const [pending, setPending] = useState<WatchStatus | null>(null);
 
-  const apply = async (next: WatchStatus) => {
-    setError(null);
-    setPending(true);
+  const apply = async (action: (typeof ACTIONS)[number]) => {
+    if (pending) return;
+    const removing = entry?.status === action.status;
+    setPending(action.status);
     try {
-      await toggleStatus(movieId, next);
+      await toggleStatus(movieId, action.status);
+      showToast(
+        removing ? `« ${title} » retiré de votre bibliothèque` : action.added(title),
+        removing ? "neutral" : action.status,
+      );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Action impossible.");
-      // La fiche n'a pas pu être récupérée : on ne laisse pas d'entrée incomplète.
+      // La fiche n'a pas pu être récupérée : ne pas laisser d'entrée incomplète.
       if (!entry) removeMovie(movieId);
+      showToast(cause instanceof Error ? cause.message : "Action impossible.", "error");
     } finally {
-      setPending(false);
+      setPending(null);
     }
   };
 
   return (
-    <div className={compact ? "flex gap-1" : "flex flex-wrap gap-2"}>
+    <div className="grid grid-cols-3 gap-1.5">
       {ACTIONS.map((action) => {
         const active = entry?.status === action.status;
+        const busy = pending === action.status;
         return (
           <button
+            aria-label={action.title}
             aria-pressed={active}
-            className={`rounded-lg border text-sm font-medium transition-colors disabled:opacity-60 ${
-              compact ? "px-2 py-1 text-xs" : "px-3 py-2"
-            } ${
+            className={`flex h-10 items-center justify-center whitespace-nowrap rounded-xl border text-xs font-semibold transition-colors ${
               active
-                ? "border-gold-500 bg-gold-500 text-ink-950"
-                : "border-ink-600 bg-ink-900/80 text-mist-200 hover:border-gold-500/60 hover:text-gold-400"
-            }`}
-            disabled={pending}
+                ? action.activeClassName
+                : "border-ink-600 bg-ink-900/80 text-mist-300 active:border-gold-500/60"
+            } ${pending && !busy ? "opacity-50" : ""}`}
+            disabled={Boolean(pending)}
             key={action.status}
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              void apply(action.status);
+              void apply(action);
             }}
             title={action.title}
             type="button"
           >
-            <span aria-hidden>{action.icon}</span>
-            <span className={compact ? "sr-only" : "ml-1.5"}>{action.label}</span>
+            {busy ? (
+              <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            ) : (
+              action.label
+            )}
           </button>
         );
       })}
-      {error && <p className="w-full text-xs text-rose-400">{error}</p>}
     </div>
   );
 }

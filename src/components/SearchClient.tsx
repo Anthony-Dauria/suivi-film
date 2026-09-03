@@ -63,8 +63,8 @@ export function SearchClient() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Rechercher un film</h1>
-        <p className="mt-1 text-sm text-mist-400">
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Rechercher un film</h1>
+        <p className="mt-1 hidden text-sm text-mist-400 sm:block">
           Tapez un titre pour consulter sa fiche, l&apos;ajouter à votre liste ou le noter.
         </p>
       </div>
@@ -77,15 +77,17 @@ export function SearchClient() {
         />
       ) : (
         <>
-          <input
-            aria-label="Titre du film"
-            autoFocus
-            className="w-full rounded-xl border border-ink-600 bg-ink-900 px-4 py-3 text-base outline-none placeholder:text-mist-400 focus:border-gold-500"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Titre du film…"
-            type="search"
-            value={query}
-          />
+          <div className="sticky-under-header -mx-4 bg-ink-950/95 px-4 py-2 backdrop-blur sm:mx-0 sm:px-0">
+            <input
+              aria-label="Titre du film"
+              autoFocus
+              className="h-13 w-full rounded-2xl border border-ink-600 bg-ink-900 px-4 text-base outline-none placeholder:text-mist-400 focus:border-gold-500"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Titre du film…"
+              type="search"
+              value={query}
+            />
+          </div>
 
           {error && <ErrorNotice message={error} />}
 
