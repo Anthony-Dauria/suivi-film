@@ -7,7 +7,14 @@
  * l'evenement `storage` propage les modifications entre onglets.
  */
 
-import type { Database, LibraryEntry, MovieSnapshot, Settings, WatchStatus } from "./types";
+import type {
+  Database,
+  LibraryEntry,
+  MediaSnapshot,
+  MediaType,
+  Settings,
+  WatchStatus,
+} from "./types";
 
 const STORAGE_KEY = "suivi-film:bibliotheque";
 /** La clé API est stockée à part pour ne jamais partir dans un export partagé. */
@@ -20,7 +27,17 @@ export const DEFAULT_SETTINGS: Settings = {
   onlyMyProviders: false,
 };
 
-const EMPTY_DATABASE: Database = { version: 1, entries: {}, settings: DEFAULT_SETTINGS };
+const EMPTY_DATABASE: Database = { version: 2, entries: {}, settings: DEFAULT_SETTINGS };
+
+/**
+ * Clé d'une œuvre dans la bibliothèque.
+ *
+ * Films et séries ont des identifiants TMDB indépendants : « 1399 » désigne un
+ * film et une série différents. Le type fait donc partie de la clé.
+ */
+export function entryKey(mediaType: MediaType, id: number): string {
+  return `${mediaType}:${id}`;
+}
 
 const listeners = new Set<() => void>();
 let cache: Database | null = null;
@@ -29,26 +46,87 @@ function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
-function normalise(raw: unknown): Database {
-  if (!raw || typeof raw !== "object") return structuredClone(EMPTY_DATABASE);
+/**
+ * Reprend une sauvegarde d'une version antérieure : avant l'ajout des séries,
+ * les entrées étaient rangées sous leur seul identifiant et portaient un champ
+ * `movie`. On les convertit sans perte.
+ */
+function migrateEntry(key: string, value: unknown): [string, LibraryEntry] | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as LibraryEntry & { movie?: MediaSnapshot };
+  const media = raw.media ?? raw.movie;
+  if (!media || typeof media.id !== "number") return null;
+
+  const mediaType: MediaType = raw.mediaType ?? media.mediaType ?? "movie";
+  const entry: LibraryEntry = {
+    ...raw,
+    id: media.id,
+    mediaType,
+    media: { ...media, id: media.id, mediaType },
+  };
+  delete (entry as { movie?: unknown }).movie;
+
+  return [key.includes(":") ? key : entryKey(mediaType, media.id), entry];
+}
+
+/** `changed` signale une sauvegarde d'une version antérieure, à réécrire. */
+function normalise(raw: unknown): { data: Database; changed: boolean } {
+  if (!raw || typeof raw !== "object") {
+    return { data: structuredClone(EMPTY_DATABASE), changed: false };
+  }
   const data = raw as Partial<Database>;
+
+  const entries: Record<string, LibraryEntry> = {};
+  let changed = data.version !== 2;
+  for (const [key, value] of Object.entries(data.entries ?? {})) {
+    const migrated = migrateEntry(key, value);
+    if (!migrated) {
+      changed = true;
+      continue;
+    }
+    if (migrated[0] !== key) changed = true;
+    entries[migrated[0]] = migrated[1];
+  }
+
   return {
-    version: 1,
-    entries: data.entries && typeof data.entries === "object" ? data.entries : {},
-    settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) },
+    data: {
+      version: 2,
+      entries,
+      settings: { ...DEFAULT_SETTINGS, ...(data.settings ?? {}) },
+    },
+    changed,
   };
 }
 
-/** Lecture synchrone : le rendu peut s'appuyer dessus sans etat de chargement. */
+/** Lecture synchrone : le rendu peut s'appuyer dessus sans état de chargement. */
 export function getDatabase(): Database {
   if (cache) return cache;
   if (!isBrowser()) return EMPTY_DATABASE;
+
+  let migrated = false;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    cache = raw ? normalise(JSON.parse(raw)) : structuredClone(EMPTY_DATABASE);
+    if (raw) {
+      const result = normalise(JSON.parse(raw));
+      cache = result.data;
+      migrated = result.changed;
+    } else {
+      cache = structuredClone(EMPTY_DATABASE);
+    }
   } catch {
     cache = structuredClone(EMPTY_DATABASE);
   }
+
+  // Une sauvegarde d'une version antérieure est réécrite au format courant dès
+  // la première lecture, plutôt qu'à la prochaine modification.
+  if (migrated) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+    } catch {
+      // Sans place pour réécrire, la conversion reste faite en mémoire.
+    }
+  }
+
   return cache;
 }
 
@@ -88,8 +166,8 @@ export function getAllEntries(): LibraryEntry[] {
   );
 }
 
-export function getEntry(movieId: number): LibraryEntry | null {
-  return getDatabase().entries[String(movieId)] ?? null;
+export function getEntry(mediaType: MediaType, id: number): LibraryEntry | null {
+  return getDatabase().entries[entryKey(mediaType, id)] ?? null;
 }
 
 export function getSettings(): Settings {
@@ -150,20 +228,21 @@ function finalise(entry: LibraryEntry): LibraryEntry {
   if (result.status === "seen" && !result.watchedAt) {
     result.watchedAt = new Date().toISOString().slice(0, 10);
   }
-  // Un film non vu ne conserve pas de note personnelle.
+  // Une œuvre non vue ne conserve pas de note personnelle.
   if (result.status !== "seen") result.rating = null;
   return result;
 }
 
-export function upsertEntry(movie: MovieSnapshot, patch: EntryPatch = {}): LibraryEntry {
+export function upsertEntry(media: MediaSnapshot, patch: EntryPatch = {}): LibraryEntry {
   const database = getDatabase();
-  const key = String(movie.id);
+  const key = entryKey(media.mediaType, media.id);
   const now = new Date().toISOString();
   const existing = database.entries[key];
   const status = patch.status ?? existing?.status ?? "watchlist";
 
   const entry = finalise({
-    id: movie.id,
+    id: media.id,
+    mediaType: media.mediaType,
     status,
     rating: patch.rating !== undefined ? sanitiseRating(patch.rating) : (existing?.rating ?? null),
     favorite: patch.favorite ?? existing?.favorite ?? false,
@@ -172,16 +251,20 @@ export function upsertEntry(movie: MovieSnapshot, patch: EntryPatch = {}): Libra
     updatedAt: now,
     notes: patch.notes !== undefined ? patch.notes : (existing?.notes ?? ""),
     rewatchCount: patch.rewatchCount ?? existing?.rewatchCount ?? 0,
-    movie: { ...(existing?.movie ?? {}), ...movie },
+    media: { ...(existing?.media ?? {}), ...media },
   });
 
   commit({ ...database, entries: { ...database.entries, [key]: entry } });
   return entry;
 }
 
-export function updateEntry(movieId: number, patch: EntryPatch): LibraryEntry | null {
+export function updateEntry(
+  mediaType: MediaType,
+  id: number,
+  patch: EntryPatch,
+): LibraryEntry | null {
   const database = getDatabase();
-  const key = String(movieId);
+  const key = entryKey(mediaType, id);
   const existing = database.entries[key];
   if (!existing) return null;
 
@@ -200,9 +283,9 @@ export function updateEntry(movieId: number, patch: EntryPatch): LibraryEntry | 
   return entry;
 }
 
-export function deleteEntry(movieId: number): boolean {
+export function deleteEntry(mediaType: MediaType, id: number): boolean {
   const database = getDatabase();
-  const key = String(movieId);
+  const key = entryKey(mediaType, id);
   if (!database.entries[key]) return false;
 
   const entries = { ...database.entries };
@@ -220,7 +303,7 @@ export function updateSettings(patch: Partial<Settings>): Settings {
 
 /** Remplace toute la bibliothèque (import d'une sauvegarde). */
 export function replaceDatabase(raw: unknown): Database {
-  const next = normalise(raw);
+  const next = normalise(raw).data;
   commit(next);
   return next;
 }

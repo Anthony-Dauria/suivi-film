@@ -2,16 +2,11 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 
-import {
-  DEFAULT_SETTINGS,
-  getDatabase,
-  getStoredApiKey,
-  subscribe,
-} from "./store";
-import type { Database, LibraryEntry, Settings } from "./types";
+import { DEFAULT_SETTINGS, entryKey, getDatabase, getStoredApiKey, subscribe } from "./store";
+import type { Database, LibraryEntry, MediaType, Settings } from "./types";
 
 /** Instantané utilisé pendant le pré-rendu, avant que le navigateur ne prenne le relais. */
-const SERVER_DATABASE: Database = { version: 1, entries: {}, settings: DEFAULT_SETTINGS };
+const SERVER_DATABASE: Database = { version: 2, entries: {}, settings: DEFAULT_SETTINGS };
 
 export function useDatabase(): Database {
   return useSyncExternalStore(subscribe, getDatabase, () => SERVER_DATABASE);
@@ -29,9 +24,9 @@ export function useEntries(): LibraryEntry[] {
   );
 }
 
-export function useEntry(movieId: number | null): LibraryEntry | null {
+export function useEntry(mediaType: MediaType, id: number): LibraryEntry | null {
   const database = useDatabase();
-  return movieId ? (database.entries[String(movieId)] ?? null) : null;
+  return database.entries[entryKey(mediaType, id)] ?? null;
 }
 
 export function useSettings(): Settings {

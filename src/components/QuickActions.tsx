@@ -3,12 +3,13 @@
 import { useState } from "react";
 
 import { useEntry } from "@/lib/hooks";
-import { removeMovie, toggleStatus } from "@/lib/library";
+import { removeMedia, toggleStatus } from "@/lib/library";
 import { showToast } from "@/lib/toast";
-import type { WatchStatus } from "@/lib/types";
+import type { MediaType, WatchStatus } from "@/lib/types";
 
 interface QuickActionsProps {
-  movieId: number;
+  mediaType: MediaType;
+  id: number;
   /** Titre repris dans le message de confirmation. */
   title: string;
 }
@@ -37,7 +38,7 @@ const ACTIONS: {
   {
     status: "dismissed",
     label: "Non",
-    title: "Ne plus me proposer ce film",
+    title: "Ne plus me proposer",
     activeClassName: "border-mist-400 bg-mist-400 text-ink-950",
     added: (title) => `« ${title} » ne vous sera plus proposé`,
   },
@@ -50,8 +51,8 @@ const ACTIONS: {
  * un message de confirmation : sur un téléphone, le doigt masque souvent la
  * vignette au moment du geste.
  */
-export function QuickActions({ movieId, title }: QuickActionsProps) {
-  const entry = useEntry(movieId);
+export function QuickActions({ mediaType, id, title }: QuickActionsProps) {
+  const entry = useEntry(mediaType, id);
   const [pending, setPending] = useState<WatchStatus | null>(null);
 
   const apply = async (action: (typeof ACTIONS)[number]) => {
@@ -59,14 +60,14 @@ export function QuickActions({ movieId, title }: QuickActionsProps) {
     const removing = entry?.status === action.status;
     setPending(action.status);
     try {
-      await toggleStatus(movieId, action.status);
+      await toggleStatus(mediaType, id, action.status);
       showToast(
         removing ? `« ${title} » retiré de votre bibliothèque` : action.added(title),
         removing ? "neutral" : action.status,
       );
     } catch (cause) {
       // La fiche n'a pas pu être récupérée : ne pas laisser d'entrée incomplète.
-      if (!entry) removeMovie(movieId);
+      if (!entry) removeMedia(mediaType, id);
       showToast(cause instanceof Error ? cause.message : "Action impossible.", "error");
     } finally {
       setPending(null);

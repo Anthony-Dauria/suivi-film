@@ -3,10 +3,11 @@
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { MovieGrid } from "@/components/MovieGrid";
+import { MediaGrid } from "@/components/MediaGrid";
+import { TypeFilter, type TypeChoice } from "@/components/TypeFilter";
 import { EmptyState } from "@/components/ui";
 import { entryToCard } from "@/lib/cards";
-import { GENRE_LIST, genreName } from "@/lib/genres";
+import { genreName, MOVIE_GENRE_LIST, TV_GENRE_LIST } from "@/lib/genres";
 import { useEntries } from "@/lib/hooks";
 import type { LibraryEntry, WatchStatus } from "@/lib/types";
 
@@ -40,9 +41,9 @@ function compare(a: LibraryEntry, b: LibraryEntry, sort: SortKey): number {
     case "rating":
       return (b.rating ?? -1) - (a.rating ?? -1);
     case "title":
-      return a.movie.title.localeCompare(b.movie.title, "fr");
+      return a.media.title.localeCompare(b.media.title, "fr");
     case "release":
-      return (b.movie.releaseDate ?? "").localeCompare(a.movie.releaseDate ?? "");
+      return (b.media.releaseDate ?? "").localeCompare(a.media.releaseDate ?? "");
     case "watched":
       return (b.watchedAt ?? "").localeCompare(a.watchedAt ?? "");
     default:
@@ -58,8 +59,9 @@ export function LibraryClient() {
   const [tab, setTab] = useState<Tab>(
     TAB_KEYS.includes(requestedTab as Tab) ? (requestedTab as Tab) : "seen",
   );
+  const [type, setType] = useState<TypeChoice>("all");
   const [sort, setSort] = useState<SortKey>("updated");
-  const [genre, setGenre] = useState(0);
+  const [genre, setGenre] = useState("");
   const [term, setTerm] = useState("");
 
   const counts = useMemo(() => {
@@ -73,31 +75,52 @@ export function LibraryClient() {
     } as Record<Tab, number>;
   }, [entries]);
 
-  /** Genres réellement presents dans la bibliothèque, pour ne pas polluer le filtre. */
+  const typeCounts = useMemo(
+    () => ({
+      all: entries.length,
+      movie: entries.filter((entry) => entry.mediaType === "movie").length,
+      tv: entries.filter((entry) => entry.mediaType === "tv").length,
+    }),
+    [entries],
+  );
+
+  /**
+   * Genres réellement présents dans la bibliothèque, pour ne pas polluer le
+   * filtre. Ils sont identifiés par « type:identifiant », les tables de genres
+   * des films et des séries étant distinctes.
+   */
   const availableGenres = useMemo(() => {
-    const present = new Set<number>();
+    const present = new Set<string>();
     for (const entry of entries) {
-      for (const id of entry.movie.genreIds ?? []) present.add(id);
+      for (const id of entry.media.genreIds ?? []) present.add(`${entry.mediaType}:${id}`);
     }
-    return GENRE_LIST.filter((item) => present.has(item.id));
+    return [
+      ...MOVIE_GENRE_LIST.map((item) => ({ ...item, key: `movie:${item.id}`, suffix: "" })),
+      ...TV_GENRE_LIST.map((item) => ({ ...item, key: `tv:${item.id}`, suffix: " (série)" })),
+    ].filter((item) => present.has(item.key));
   }, [entries]);
 
   const visible = useMemo(() => {
     const normalised = term.trim().toLowerCase();
     return entries
       .filter((entry) => matchesTab(entry, tab))
-      .filter((entry) => genre === 0 || (entry.movie.genreIds ?? []).includes(genre))
+      .filter((entry) => type === "all" || entry.mediaType === type)
+      .filter(
+        (entry) =>
+          genre === "" ||
+          (entry.media.genreIds ?? []).some((id) => `${entry.mediaType}:${id}` === genre),
+      )
       .filter(
         (entry) =>
           normalised === "" ||
-          entry.movie.title.toLowerCase().includes(normalised) ||
-          entry.movie.originalTitle?.toLowerCase().includes(normalised) ||
-          (entry.movie.directors ?? []).some((person) =>
+          entry.media.title.toLowerCase().includes(normalised) ||
+          entry.media.originalTitle?.toLowerCase().includes(normalised) ||
+          (entry.media.directors ?? []).some((person) =>
             person.name.toLowerCase().includes(normalised),
           ),
       )
       .sort((a, b) => compare(a, b, sort));
-  }, [entries, tab, genre, term, sort]);
+  }, [entries, tab, type, genre, term, sort]);
 
   return (
     <div className="space-y-6">
@@ -127,6 +150,8 @@ export function LibraryClient() {
         ))}
       </div>
 
+      <TypeFilter counts={typeCounts} onChange={setType} value={type} />
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <input
           aria-label="Filtrer par titre ou réalisateur"
@@ -140,13 +165,14 @@ export function LibraryClient() {
         <select
           aria-label="Filtrer par genre"
           className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm outline-none focus:border-gold-500"
-          onChange={(event) => setGenre(Number(event.target.value))}
+          onChange={(event) => setGenre(event.target.value)}
           value={genre}
         >
-          <option value={0}>Tous les genres</option>
+          <option value="">Tous les genres</option>
           {availableGenres.map((item) => (
-            <option key={item.id} value={item.id}>
+            <option key={item.key} value={item.key}>
               {item.name}
+              {item.suffix}
             </option>
           ))}
         </select>
@@ -167,21 +193,21 @@ export function LibraryClient() {
 
       {visible.length === 0 ? (
         <EmptyState
-          action={{ href: "/recherche", label: "Chercher un film" }}
+          action={{ href: "/recherche", label: "Chercher un titre" }}
           description={
             counts.all === 0
-              ? "Ajoutez les films que vous avez vus pour construire votre historique et affiner vos recommandations."
-              : "Aucun film ne correspond à ces filtres."
+              ? "Ajoutez les films et séries que vous avez vus pour construire votre historique et affiner vos recommandations."
+              : "Aucun titre ne correspond à ces filtres."
           }
           title={counts.all === 0 ? "Bibliothèque vide" : "Rien à afficher"}
         />
       ) : (
-        <MovieGrid
-          movies={visible.map((entry) => ({
+        <MediaGrid
+          items={visible.map((entry) => ({
             ...entryToCard(entry),
             reasons:
-              genre !== 0 && entry.movie.genreIds?.includes(genre)
-                ? [genreName(genre)]
+              genre !== "" && entry.media.genreIds?.some((id) => `${entry.mediaType}:${id}` === genre)
+                ? [genreName(Number(genre.split(":")[1]), entry.mediaType)]
                 : undefined,
           }))}
         />

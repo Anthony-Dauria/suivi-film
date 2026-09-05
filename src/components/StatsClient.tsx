@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { BarList } from "@/components/BarList";
 import { RatingStars } from "@/components/RatingStars";
 import { EmptyState, SectionHeader, StatTile } from "@/components/ui";
+import { mediaHref } from "@/lib/cards";
 import { formatRating, formatTotalRuntime, releaseYear } from "@/lib/format";
 import { useEntries } from "@/lib/hooks";
 import { computeStats } from "@/lib/stats";
@@ -17,7 +18,7 @@ export function StatsClient() {
   if (stats.seen === 0) {
     return (
       <EmptyState
-        action={{ href: "/recherche", label: "Ajouter un film" }}
+        action={{ href: "/recherche", label: "Ajouter un titre" }}
         description="Marquez quelques films comme vus : vous verrez apparaitre ici vos genres de prédilection, votre temps de visionnage et la répartition de vos notes."
         title="Aucune statistique pour l'instant"
       />
@@ -31,14 +32,19 @@ export function StatsClient() {
       <div>
         <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Statistiques</h1>
         <p className="mt-1 text-sm text-mist-400">
-          Une lecture de vos habitudes de spectateur, calculée sur les films marqués comme vus.
+          Une lecture de vos habitudes de spectateur, calculée sur les films et séries marqués
+          comme vus.
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile label="Films vus" value={String(stats.seen)} hint={`${stats.ratedCount} notes`} />
         <StatTile
-          hint="Revisionnages inclus"
+          hint={`${stats.seenMovies} film${stats.seenMovies > 1 ? "s" : ""} · ${stats.seenSeries} série${stats.seenSeries > 1 ? "s" : ""}`}
+          label="Vus"
+          value={String(stats.seen)}
+        />
+        <StatTile
+          hint="Séries comptées par épisode"
           label="Temps cumulé"
           value={formatTotalRuntime(stats.totalMinutes)}
         />
@@ -94,7 +100,7 @@ export function StatsClient() {
         </section>
 
         <section className="card p-5">
-          <h2 className="mb-4 text-lg font-semibold">Films vus par année</h2>
+          <h2 className="mb-4 text-lg font-semibold">Vus par année</h2>
           <BarList
             items={stats.perYearWatched.map((item) => ({
               label: String(item.year),
@@ -104,7 +110,7 @@ export function StatsClient() {
         </section>
 
         <section className="card p-5">
-          <h2 className="mb-4 text-lg font-semibold">Réalisateurs récurrents</h2>
+          <h2 className="mb-4 text-lg font-semibold">Réalisateurs et créateurs</h2>
           <BarList
             items={stats.topDirectors.map((person) => ({
               label: person.name,
@@ -132,12 +138,20 @@ export function StatsClient() {
           {stats.bestRated.map((entry) => (
             <li className="flex items-center gap-3 px-4 py-3" key={entry.id}>
               <div className="min-w-0 flex-1">
-                <Link className="text-sm font-medium hover:text-gold-400" href={`/film/?id=${entry.id}`}>
-                  {entry.movie.title}
+                <Link
+                  className="text-sm font-medium hover:text-gold-400"
+                  href={mediaHref(entry.mediaType, entry.id)}
+                >
+                  {entry.media.title}
                 </Link>
                 <p className="text-xs text-mist-400">
-                  {releaseYear(entry.movie.releaseDate)}
-                  {entry.movie.directors?.[0] ? ` · ${entry.movie.directors[0].name}` : ""}
+                  {[
+                    releaseYear(entry.media.releaseDate),
+                    entry.mediaType === "tv" ? "Série" : null,
+                    entry.media.directors?.[0]?.name,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
               </div>
               <RatingStars readOnly size="sm" value={entry.rating} />

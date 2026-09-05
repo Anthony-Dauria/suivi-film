@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 
 import { CastRow } from "@/components/CastRow";
 import { BackIcon, PlayIcon } from "@/components/icons";
-import { MovieRow } from "@/components/MovieGrid";
+import { MediaRow } from "@/components/MediaGrid";
 import { Poster } from "@/components/Poster";
 import { ProviderSection } from "@/components/ProviderSection";
 import { ScoreRing } from "@/components/ScoreRing";
@@ -23,18 +23,20 @@ import {
   translateStatus,
 } from "@/lib/format";
 import { useIsConfigured, useSettings } from "@/lib/hooks";
-import { backdropUrl, getMovieDetails } from "@/lib/tmdb";
-import type { MovieDetails } from "@/lib/types";
+import { backdropUrl, getDetails } from "@/lib/tmdb";
+import type { MediaDetails, MediaType } from "@/lib/types";
 
-export function MovieClient() {
+/** Fiche complète d'un film ou d'une série, selon la route qui la rend. */
+export function MediaClient({ mediaType }: { mediaType: MediaType }) {
   const router = useRouter();
   const configured = useIsConfigured();
   const settings = useSettings();
   const rawId = useSearchParams().get("id");
-  const movieId = Number(rawId);
-  const valid = Number.isInteger(movieId) && movieId > 0;
+  const id = Number(rawId);
+  const valid = Number.isInteger(id) && id > 0;
+  const isSeries = mediaType === "tv";
 
-  const [details, setDetails] = useState<MovieDetails | null>(null);
+  const [details, setDetails] = useState<MediaDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -45,7 +47,7 @@ export function MovieClient() {
     setError(null);
     setDetails(null);
 
-    getMovieDetails(movieId)
+    getDetails(mediaType, id)
       .then((data) => {
         if (!cancelled) setDetails(data);
       })
@@ -62,14 +64,14 @@ export function MovieClient() {
     return () => {
       cancelled = true;
     };
-  }, [movieId, valid, configured, settings.language, settings.region]);
+  }, [mediaType, id, valid, configured, settings.language, settings.region]);
 
   if (!valid) {
     return (
       <EmptyState
-        action={{ href: "/recherche", label: "Rechercher un film" }}
-        description="L'adresse de cette fiche est incomplète : aucun identifiant de film n'a été fourni."
-        title="Film introuvable"
+        action={{ href: "/recherche", label: "Rechercher" }}
+        description="L'adresse de cette fiche est incomplète : aucun identifiant n'a été fourni."
+        title={isSeries ? "Série introuvable" : "Film introuvable"}
       />
     );
   }
@@ -92,22 +94,67 @@ export function MovieClient() {
 
   const backdrop = backdropUrl(details.backdropPath);
 
+  // Une série s'étale sur plusieurs années : « 2011 – 2019 », ou « 2011 – … »
+  // tant qu'elle est en production.
+  const start = releaseYear(details.releaseDate);
+  const end = releaseYear(details.lastAirDate);
+  const yearRange =
+    isSeries && start !== "—"
+      ? details.inProduction
+        ? `${start} – …`
+        : end !== "—" && end !== start
+          ? `${start} – ${end}`
+          : start
+      : start;
+
   const suggestions = [...details.recommendations, ...details.similar]
-    .filter((movie, index, list) => list.findIndex((item) => item.id === movie.id) === index)
+    .filter(
+      (item, index, list) =>
+        list.findIndex(
+          (other) => other.id === item.id && other.mediaType === item.mediaType,
+        ) === index,
+    )
     .slice(0, 18);
+
+  const seasons = details.seasonCount ?? 0;
+  const episodes = details.episodeCount ?? 0;
 
   const facts: { label: string; value: string | null }[] = [
     {
       label: "Titre original",
       value: details.originalTitle !== details.title ? details.originalTitle : null,
     },
-    { label: "Sortie", value: formatDate(details.releaseDate) },
-    { label: "Durée", value: formatRuntime(details.runtime) },
+    {
+      label: isSeries ? "Première diffusion" : "Sortie",
+      value: formatDate(details.releaseDate),
+    },
+    ...(isSeries
+      ? [
+          {
+            label: "Dernière diffusion",
+            value: details.inProduction ? "En cours" : formatDate(details.lastAirDate),
+          },
+          {
+            label: "Saisons",
+            value: seasons ? `${seasons} saison${seasons > 1 ? "s" : ""}` : null,
+          },
+          {
+            label: "Épisodes",
+            value: episodes ? `${episodes} épisode${episodes > 1 ? "s" : ""}` : null,
+          },
+          { label: "Diffuseurs", value: details.networks?.join(", ") || null },
+          { label: "Durée d'un épisode", value: formatRuntime(details.runtime) },
+        ]
+      : [{ label: "Durée", value: formatRuntime(details.runtime) }]),
     { label: "Statut", value: translateStatus(details.status) },
     { label: "Pays", value: details.productionCountries.join(", ") || null },
     { label: "Langues", value: details.spokenLanguages.join(", ") || null },
-    { label: "Budget", value: formatMoney(details.budget) },
-    { label: "Recettes", value: formatMoney(details.revenue) },
+    ...(isSeries
+      ? []
+      : [
+          { label: "Budget", value: formatMoney(details.budget) },
+          { label: "Recettes", value: formatMoney(details.revenue) },
+        ]),
     { label: "Production", value: details.productionCompanies.slice(0, 4).join(", ") || null },
     { label: "Scénario", value: details.writers.map((person) => person.name).join(", ") || null },
   ].filter((fact) => Boolean(fact.value));
@@ -150,9 +197,7 @@ export function MovieClient() {
             <div className="min-w-0 flex-1">
               <h1 className="text-xl font-bold leading-tight tracking-tight sm:text-4xl">
                 {details.title}{" "}
-                <span className="font-normal text-mist-400">
-                  ({releaseYear(details.releaseDate)})
-                </span>
+                <span className="font-normal text-mist-400">({yearRange})</span>
               </h1>
 
               {details.tagline && (
@@ -169,7 +214,12 @@ export function MovieClient() {
                 )}
                 <span>
                   {[
-                    formatDate(details.releaseDate),
+                    isSeries
+                      ? seasons
+                        ? `${seasons} saison${seasons > 1 ? "s" : ""}`
+                        : "Série"
+                      : formatDate(details.releaseDate),
+                    isSeries && episodes ? `${episodes} épisodes` : null,
                     formatRuntime(details.runtime),
                     details.genres.map((genre) => genre.name).join(", ") || null,
                   ]
@@ -180,7 +230,9 @@ export function MovieClient() {
 
               {details.directors.length > 0 && (
                 <p className="mt-2 text-sm text-mist-300">
-                  <span className="text-mist-400">Réalisation : </span>
+                  <span className="text-mist-400">
+                    {isSeries ? "Création : " : "Réalisation : "}
+                  </span>
                   {details.directors.map((person) => person.name).join(", ")}
                 </p>
               )}
@@ -235,7 +287,8 @@ export function MovieClient() {
           <section className="card p-5">
             <h2 className="text-lg font-semibold">Synopsis</h2>
             <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-mist-300">
-              {details.overview || "Aucun synopsis n'est disponible en français pour ce film."}
+              {details.overview ||
+                `Aucun synopsis n'est disponible en français pour ${isSeries ? "cette série" : "ce film"}.`}
             </p>
 
             {details.keywords.length > 0 && (
@@ -261,6 +314,29 @@ export function MovieClient() {
             </section>
           )}
 
+          {isSeries && (details.seasons?.length ?? 0) > 0 && (
+            <section className="card p-5">
+              <h2 className="mb-3 text-lg font-semibold">Saisons</h2>
+              <ul className="divide-y divide-ink-800">
+                {details.seasons?.map((season) => (
+                  <li className="flex items-baseline gap-3 py-2" key={season.id}>
+                    <span className="text-sm font-medium text-mist-200">{season.name}</span>
+                    <span className="text-xs text-mist-400">
+                      {[
+                        season.episodeCount
+                          ? `${season.episodeCount} épisode${season.episodeCount > 1 ? "s" : ""}`
+                          : null,
+                        season.airDate ? releaseYear(season.airDate) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section className="card p-5">
             <h2 className="mb-3 text-lg font-semibold">Fiche technique</h2>
             <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -282,7 +358,7 @@ export function MovieClient() {
         </div>
 
         <div className="order-1 min-w-0 space-y-6 lg:order-2">
-          <TrackingPanel movieId={details.id} title={details.title} />
+          <TrackingPanel id={details.id} mediaType={mediaType} title={details.title} />
           <ProviderSection providers={details.providers} region={settings.region} />
         </div>
       </div>
@@ -290,10 +366,10 @@ export function MovieClient() {
       {suggestions.length > 0 && (
         <section>
           <SectionHeader
-            subtitle="Sélection TMDB à partir de ce film"
+            subtitle={`Sélection TMDB à partir de ${isSeries ? "cette série" : "ce film"}`}
             title="Dans le même esprit"
           />
-          <MovieRow movies={suggestions.map(summaryToCard)} />
+          <MediaRow items={suggestions.map(summaryToCard)} />
         </section>
       )}
 

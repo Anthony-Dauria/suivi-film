@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { MovieGrid } from "@/components/MovieGrid";
+import { MediaGrid } from "@/components/MediaGrid";
+import { TypeFilter, type TypeChoice } from "@/components/TypeFilter";
 import { Chip, EmptyState, ErrorNotice, SectionHeader } from "@/components/ui";
 import { summaryToCard } from "@/lib/cards";
-import { GENRE_LIST } from "@/lib/genres";
+import { genreList } from "@/lib/genres";
 import { useEntries, useIsConfigured, useSettings } from "@/lib/hooks";
-import { getRecommendations, type ScoredMovie } from "@/lib/reco";
+import { getRecommendations, type ScoredMedia } from "@/lib/reco";
 import type { TasteProfile } from "@/lib/profile";
 
 const DURATIONS = [
@@ -22,10 +23,11 @@ export function RecommendationsClient() {
   const settings = useSettings();
   const entries = useEntries();
 
+  const [type, setType] = useState<TypeChoice>("all");
   const [genreId, setGenreId] = useState(0);
   const [maxRuntime, setMaxRuntime] = useState(0);
   const [onlyMyProviders, setOnlyMyProviders] = useState(settings.onlyMyProviders);
-  const [items, setItems] = useState<ScoredMovie[]>([]);
+  const [items, setItems] = useState<ScoredMedia[]>([]);
   const [profile, setProfile] = useState<TasteProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +39,7 @@ export function RecommendationsClient() {
     try {
       const result = await getRecommendations({
         limit: 30,
+        mediaType: type === "all" ? undefined : type,
         genreId: genreId || undefined,
         maxRuntime: maxRuntime || undefined,
         onlyMyProviders,
@@ -52,7 +55,7 @@ export function RecommendationsClient() {
     } finally {
       setLoading(false);
     }
-  }, [configured, genreId, maxRuntime, onlyMyProviders]);
+  }, [configured, type, genreId, maxRuntime, onlyMyProviders]);
 
   // Premier calcul au chargement, puis à chaque changement de filtre.
   useEffect(() => {
@@ -74,9 +77,9 @@ export function RecommendationsClient() {
       <div>
         <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Recommandations pour vous</h1>
         <p className="mt-1 max-w-3xl text-sm text-mist-400">
-          Chaque proposition est calculée à partir de votre bibliothèque : films que vous avez le
-          mieux notés, genres qui reviennent, thèmes récurrents, réalisateurs et acteurs que vous
-          suivez. La raison de chaque suggestion est indiquée sous l&apos;affiche.
+          Chaque proposition est calculée à partir de votre bibliothèque : films et séries que vous
+          avez le mieux notés, genres qui reviennent, thèmes récurrents, réalisateurs, créateurs et
+          acteurs que vous suivez. La raison de chaque suggestion est indiquée sous l&apos;affiche.
         </p>
       </div>
 
@@ -108,6 +111,17 @@ export function RecommendationsClient() {
       )}
 
       <div className="card grid grid-cols-2 items-end gap-3 p-4 sm:flex sm:flex-wrap">
+        <div className="col-span-2 sm:col-span-1">
+          <TypeFilter
+            onChange={(next) => {
+              setType(next);
+              // Un genre de film n'a pas de sens pour une série.
+              setGenreId(0);
+            }}
+            value={type}
+          />
+        </div>
+
         <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
           Genre
           <select
@@ -116,7 +130,7 @@ export function RecommendationsClient() {
             value={genreId}
           >
             <option value={0}>Tous</option>
-            {GENRE_LIST.map((genre) => (
+            {genreList(type === "tv" ? "tv" : "movie").map((genre) => (
               <option key={genre.id} value={genre.id}>
                 {genre.name}
               </option>
@@ -124,7 +138,11 @@ export function RecommendationsClient() {
           </select>
         </label>
 
-        <label className="flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400">
+        <label
+          className={`flex flex-col gap-1 text-xs uppercase tracking-wide text-mist-400 ${
+            type === "tv" ? "hidden" : ""
+          }`}
+        >
           Durée
           <select
             className="h-12 rounded-xl border border-ink-600 bg-ink-900 px-3 text-sm normal-case text-mist-200"
@@ -172,11 +190,11 @@ export function RecommendationsClient() {
 
       {!loading && !error && items.length === 0 ? (
         <EmptyState
-          action={{ href: "/recherche", label: "Ajouter des films" }}
+          action={{ href: "/recherche", label: "Ajouter des titres" }}
           description={
             entries.length === 0
-              ? "Ajoutez et notez quelques films pour que le moteur puisse apprendre vos goûts."
-              : "Aucun film recommandé ne correspond à ces filtres. Élargissez-les, ou ajoutez des plateformes dans les réglages."
+              ? "Ajoutez et notez quelques films ou séries pour que le moteur puisse apprendre vos goûts."
+              : "Aucun titre recommandé ne correspond à ces filtres. Élargissez-les, ou ajoutez des plateformes dans les réglages."
           }
           title="Pas encore de suggestion"
         />
@@ -184,12 +202,12 @@ export function RecommendationsClient() {
         items.length > 0 && (
           <section>
             <SectionHeader
-              subtitle={`${items.length} film${items.length > 1 ? "s" : ""} sélectionné${items.length > 1 ? "s" : ""} pour vous`}
+              subtitle={`${items.length} titre${items.length > 1 ? "s" : ""} sélectionné${items.length > 1 ? "s" : ""} pour vous`}
               title="Sélection"
             />
-            <MovieGrid
-              movies={items.map((item) => ({
-                ...summaryToCard(item.movie),
+            <MediaGrid
+              items={items.map((item) => ({
+                ...summaryToCard(item.media),
                 reasons: item.reasons,
                 providers: item.providers,
               }))}

@@ -3,12 +3,13 @@
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { MovieGrid } from "@/components/MovieGrid";
+import { MediaGrid } from "@/components/MediaGrid";
+import { TypeFilter, type TypeChoice } from "@/components/TypeFilter";
 import { EmptyState, ErrorNotice } from "@/components/ui";
 import { summaryToCard } from "@/lib/cards";
 import { useIsConfigured } from "@/lib/hooks";
-import { searchMovies } from "@/lib/tmdb";
-import type { TmdbMovieSummary } from "@/lib/types";
+import { searchMedia } from "@/lib/tmdb";
+import type { MediaSummary } from "@/lib/types";
 
 /** Recherche instantanée avec anti-rebond et pagination « charger plus ». */
 export function SearchClient() {
@@ -16,7 +17,8 @@ export function SearchClient() {
   const initialQuery = useSearchParams().get("q") ?? "";
 
   const [query, setQuery] = useState(initialQuery);
-  const [results, setResults] = useState<TmdbMovieSummary[]>([]);
+  const [type, setType] = useState<TypeChoice>("all");
+  const [results, setResults] = useState<MediaSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -24,18 +26,18 @@ export function SearchClient() {
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
 
-  const run = useCallback(async (term: string, targetPage: number) => {
+  const run = useCallback(async (term: string, targetPage: number, choice: TypeChoice) => {
     const identifier = ++requestId.current;
     setLoading(true);
     setError(null);
     try {
-      const data = await searchMovies(term, targetPage);
+      const data = await searchMedia(term, targetPage, choice === "all" ? undefined : choice);
       if (identifier !== requestId.current) return;
       setResults((previous) =>
         targetPage === 1 ? data.results : [...previous, ...data.results],
       );
-      setTotal(data.total_results ?? 0);
-      setTotalPages(data.total_pages ?? 0);
+      setTotal(data.totalResults ?? 0);
+      setTotalPages(data.totalPages ?? 0);
       setPage(data.page ?? targetPage);
     } catch (cause) {
       if (identifier === requestId.current) {
@@ -56,16 +58,17 @@ export function SearchClient() {
       setTotalPages(0);
       return;
     }
-    const timer = setTimeout(() => void run(term, 1), 350);
+    const timer = setTimeout(() => void run(term, 1, type), 350);
     return () => clearTimeout(timer);
-  }, [query, run, configured]);
+  }, [query, type, run, configured]);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Rechercher un film</h1>
         <p className="mt-1 hidden text-sm text-mist-400 sm:block">
-          Tapez un titre pour consulter sa fiche, l&apos;ajouter à votre liste ou le noter.
+          Films et séries : tapez un titre pour consulter sa fiche, l&apos;ajouter à votre liste
+          ou le noter.
         </p>
       </div>
 
@@ -79,21 +82,24 @@ export function SearchClient() {
         <>
           <div className="sticky-under-header -mx-4 bg-ink-950/95 px-4 py-2 backdrop-blur sm:mx-0 sm:px-0">
             <input
-              aria-label="Titre du film"
+              aria-label="Titre du film ou de la série"
               autoFocus
               className="h-13 w-full rounded-2xl border border-ink-600 bg-ink-900 px-4 text-base outline-none placeholder:text-mist-400 focus:border-gold-500"
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Titre du film…"
+              placeholder="Titre d'un film ou d'une série…"
               type="search"
               value={query}
             />
+            <div className="mt-2">
+              <TypeFilter onChange={setType} value={type} />
+            </div>
           </div>
 
           {error && <ErrorNotice message={error} />}
 
           {query.trim().length >= 2 && !loading && results.length === 0 && !error && (
             <EmptyState
-              description="Vérifiez l'orthographe, ou essayez le titre original du film."
+              description="Vérifiez l'orthographe, ou essayez le titre original."
               title="Aucun résultat"
             />
           )}
@@ -103,13 +109,13 @@ export function SearchClient() {
               <p className="text-sm text-mist-400">
                 {total.toLocaleString("fr-FR")} résultat{total > 1 ? "s" : ""}
               </p>
-              <MovieGrid movies={results.map(summaryToCard)} />
+              <MediaGrid items={results.map(summaryToCard)} />
               {page < totalPages && (
                 <div className="flex justify-center">
                   <button
                     className="rounded-xl border border-ink-600 px-5 py-2.5 text-sm font-medium transition-colors hover:border-gold-500/60 hover:text-gold-400 disabled:opacity-60"
                     disabled={loading}
-                    onClick={() => void run(query.trim(), page + 1)}
+                    onClick={() => void run(query.trim(), page + 1, type)}
                     type="button"
                   >
                     {loading ? "Chargement…" : "Charger plus de résultats"}

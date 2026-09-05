@@ -1,9 +1,10 @@
 # 🎬 Suivi Film
 
-Application web personnelle pour **suivre les films que vous avez vus**, garder une liste de ce
-que vous voulez voir, consulter une **fiche complète pour chaque film** (comme sur Google :
-synopsis, casting, durée, notes, budget, bande-annonce…), savoir **sur quelles plateformes le
-regarder**, et recevoir des **recommandations construites à partir de vos propres goûts**.
+Application web personnelle pour **suivre les films et les séries que vous avez vus**, garder une
+liste de ce que vous voulez voir, consulter une **fiche complète pour chaque titre** (comme sur
+Google : synopsis, casting, durée, notes, saisons, bande-annonce…), savoir **sur quelles
+plateformes le regarder**, et recevoir des **recommandations construites à partir de vos propres
+goûts**.
 
 Pensée pour le téléphone — barre d'onglets, gestes au pouce, installation sur l'écran d'accueil —
 et **entièrement statique** : elle s'héberge gratuitement sur GitHub Pages, sans serveur ni base
@@ -22,8 +23,17 @@ de données. Vos films, vos notes et votre clé API restent dans votre navigateu
   **message de confirmation** à chaque ajout : on voit ce qui vient d'être enregistré même quand
   le doigt masque la vignette.
 
+### Films et séries
+- La recherche interroge les deux à la fois ; un sélecteur **Tout / Films / Séries** affine si
+  besoin, et les séries portent un repère visible sur leur affiche.
+- Les séries ont leur propre fiche : **saisons et épisodes**, période de diffusion, diffuseurs,
+  créateurs, classification, et la liste des saisons avec leur nombre d'épisodes.
+- La bibliothèque, les statistiques et les recommandations mélangent les deux, avec un filtre par
+  type. Le temps de visionnage d'une série compte la durée d'un épisode multipliée par le nombre
+  d'épisodes.
+
 ### Bibliothèque personnelle
-- Trois statuts par film : **vu**, **à voir**, **pas intéressé** (ce dernier exclut le film des
+- Trois statuts par titre : **vu**, **à voir**, **pas intéressé** (ce dernier l'exclut des
   recommandations). Le statut apparaît en toutes lettres sous chaque affiche, le bouton
   correspondant se remplit de sa couleur, et la vignette prend un liseré assorti.
 - **Note sur 5 étoiles** par demi-étoile, **coup de cœur**, **date de visionnage**, **nombre de
@@ -32,8 +42,8 @@ de données. Vos films, vos notes et votre clé API restent dans votre navigateu
   visionnage ou ordre alphabétique.
 - Export / import de la bibliothèque au format JSON.
 
-### Fiche film détaillée
-Chaque film dispose d'une page complète alimentée par TMDB :
+### Fiche détaillée
+Chaque titre dispose d'une page complète alimentée par TMDB :
 affiche et image d'arrière-plan, titre original, date de sortie, durée, classification,
 genres, synopsis en français, note moyenne du public et nombre de votes, réalisation et
 scénario, **distribution avec photos**, bande-annonce intégrée, budget et recettes, pays,
@@ -51,10 +61,10 @@ Le moteur croise quatre signaux issus de votre bibliothèque :
 
 | Signal | Ce qu'il apporte |
 | --- | --- |
-| Films que vous avez le mieux notés | suggestions TMDB associées à chacun d'eux |
+| Titres que vous avez le mieux notés | suggestions TMDB associées à chacun d'eux |
 | Genres de prédilection | découvertes ciblées, et pénalité sur les genres que vous notez mal |
-| Thèmes récurrents (mots-clés) | films partageant les mêmes sujets |
-| Réalisateurs et acteurs favoris | leur filmographie que vous n'avez pas encore vue |
+| Thèmes récurrents (mots-clés) | films et séries partageant les mêmes sujets |
+| Réalisateurs, créateurs et acteurs favoris | leurs œuvres que vous n'avez pas encore vues |
 
 Chaque candidat est ensuite repondéré par sa qualité objective (note moyenne, fiabilité du
 nombre de votes, notoriété) et par votre affinité de genre calculée sur tout l'historique. Les
@@ -129,7 +139,7 @@ npx serve out     # ou n'importe quel serveur de fichiers
 
 ## Premiers pas
 
-1. Allez dans **Rechercher** et ajoutez 5 à 10 films que vous avez déjà vus.
+1. Allez dans **Rechercher** et ajoutez 5 à 10 films ou séries que vous avez déjà vus.
 2. Notez-les : la note est le signal le plus important pour les recommandations (5/5 = adoré,
    3/5 = neutre, 1/5 = détesté).
 3. Renseignez vos abonnements dans **Réglages → Mes plateformes**.
@@ -149,7 +159,7 @@ Tout est stocké dans le **stockage local du navigateur**, sur votre appareil :
 
 | Clé | Contenu |
 | --- | --- |
-| `suivi-film:bibliotheque` | films suivis, notes, réglages |
+| `suivi-film:bibliotheque` | films et séries suivis, notes, réglages |
 | `suivi-film:cle-api` | votre clé TMDB |
 | `suivi-film:cache:…` | réponses TMDB mises en cache |
 
@@ -179,7 +189,7 @@ src/
 │   └── film/                  Fiche détaillée (adresse : /film/?id=27205)
 ├── components/                Composants d'interface
 └── lib/
-    ├── tmdb.ts                Client TMDB (auth v3/v4, normalisation des réponses)
+    ├── tmdb.ts                Client TMDB (auth v3/v4, normalisation films et séries)
     ├── cache.ts               Cache des réponses, mutualisation et plafond de requêtes
     ├── store.ts               Bibliothèque persistée dans le navigateur
     ├── hooks.ts               Abonnement React au stockage local

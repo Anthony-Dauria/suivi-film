@@ -1,32 +1,46 @@
-/** Types partages entre le client TMDB, le stockage local et l'interface. */
+/** Types partagés entre le client TMDB, le stockage local et l'interface. */
 
 export type WatchStatus = "seen" | "watchlist" | "dismissed";
 
-/** Instantané d'un film conservé en local pour afficher la bibliothèque hors ligne. */
-export interface MovieSnapshot {
-  id: number;
-  title: string;
-  originalTitle: string;
-  posterPath: string | null;
-  backdropPath: string | null;
-  releaseDate: string | null;
-  genreIds: number[];
-  voteAverage: number;
-  runtime: number | null;
-  overview: string;
-  directors: NamedEntity[];
-  cast: NamedEntity[];
-  keywords: NamedEntity[];
-}
+/** Films et séries sont suivis côte à côte, avec des routes TMDB distinctes. */
+export type MediaType = "movie" | "tv";
 
 export interface NamedEntity {
   id: number;
   name: string;
 }
 
+/**
+ * Instantané d'une œuvre conservé en local pour afficher la bibliothèque sans
+ * appel réseau, et pour alimenter le profil de goût.
+ */
+export interface MediaSnapshot {
+  id: number;
+  mediaType: MediaType;
+  title: string;
+  originalTitle: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  /** Sortie du film, ou première diffusion de la série. */
+  releaseDate: string | null;
+  genreIds: number[];
+  voteAverage: number;
+  /** Durée du film, ou durée moyenne d'un épisode. */
+  runtime: number | null;
+  overview: string;
+  /** Réalisation pour un film, création pour une série. */
+  directors: NamedEntity[];
+  cast: NamedEntity[];
+  keywords: NamedEntity[];
+  /** Séries uniquement. */
+  seasonCount?: number;
+  episodeCount?: number;
+}
+
 /** Une entrée de la bibliothèque personnelle. */
 export interface LibraryEntry {
   id: number;
+  mediaType: MediaType;
   status: WatchStatus;
   /** Note personnelle sur 5, par pas de 0,5. `null` si non notée. */
   rating: number | null;
@@ -37,7 +51,7 @@ export interface LibraryEntry {
   updatedAt: string;
   notes: string;
   rewatchCount: number;
-  movie: MovieSnapshot;
+  media: MediaSnapshot;
 }
 
 export interface Settings {
@@ -47,7 +61,7 @@ export interface Settings {
   region: string;
   /** Langue des fiches (ISO 639-1 tiret ISO 3166-1). */
   language: string;
-  /** N'afficher en recommandation que les films disponibles sur mes plateformes. */
+  /** N'afficher en recommandation que les œuvres disponibles sur mes plateformes. */
   onlyMyProviders: boolean;
 }
 
@@ -58,23 +72,26 @@ export interface Database {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Réponses TMDB (champs réellement utilises)                                  */
+/* Réponses TMDB (champs réellement utilisés)                                  */
 /* -------------------------------------------------------------------------- */
 
-export interface TmdbMovieSummary {
+/**
+ * Résultat de liste TMDB, normalisé : l'API nomme `title`/`release_date` pour
+ * les films et `name`/`first_air_date` pour les séries.
+ */
+export interface MediaSummary {
   id: number;
+  mediaType: MediaType;
   title: string;
-  original_title: string;
+  originalTitle: string;
   overview: string;
-  poster_path: string | null;
-  backdrop_path: string | null;
-  release_date: string | null;
-  genre_ids?: number[];
-  genres?: { id: number; name: string }[];
-  vote_average: number;
-  vote_count: number;
+  posterPath: string | null;
+  backdropPath: string | null;
+  releaseDate: string | null;
+  genreIds: number[];
+  voteAverage: number;
+  voteCount: number;
   popularity: number;
-  adult?: boolean;
 }
 
 export interface TmdbCredit {
@@ -113,9 +130,20 @@ export interface WatchProviders {
   free: TmdbProvider[];
 }
 
-/** Fiche complète d'un film, normalisée pour l'interface. */
-export interface MovieDetails {
+export interface Season {
   id: number;
+  seasonNumber: number;
+  name: string;
+  episodeCount: number;
+  airDate: string | null;
+  posterPath: string | null;
+  overview: string;
+}
+
+/** Fiche complète d'un film ou d'une série, normalisée pour l'interface. */
+export interface MediaDetails {
+  id: number;
+  mediaType: MediaType;
   title: string;
   originalTitle: string;
   tagline: string | null;
@@ -123,35 +151,40 @@ export interface MovieDetails {
   posterPath: string | null;
   backdropPath: string | null;
   releaseDate: string | null;
+  /** Durée du film, ou durée moyenne d'un épisode. */
   runtime: number | null;
   status: string | null;
-  genres: { id: number; name: string }[];
+  genres: NamedEntity[];
   voteAverage: number;
   voteCount: number;
   popularity: number;
-  budget: number;
-  revenue: number;
   homepage: string | null;
   imdbId: string | null;
   originalLanguage: string | null;
   spokenLanguages: string[];
   productionCountries: string[];
   productionCompanies: string[];
-  collection: { id: number; name: string; posterPath: string | null } | null;
   certification: string | null;
+  /** Réalisation (film) ou création (série). */
   directors: TmdbCredit[];
   writers: TmdbCredit[];
   cast: TmdbCredit[];
   trailer: TmdbVideo | null;
-  videos: TmdbVideo[];
   providers: WatchProviders;
-  keywords: { id: number; name: string }[];
-  similar: TmdbMovieSummary[];
-  recommendations: TmdbMovieSummary[];
-}
+  keywords: NamedEntity[];
+  similar: MediaSummary[];
+  recommendations: MediaSummary[];
 
-export interface Recommendation {
-  movie: TmdbMovieSummary;
-  score: number;
-  reasons: string[];
+  /** Films uniquement. */
+  budget?: number;
+  revenue?: number;
+  collection?: { id: number; name: string; posterPath: string | null } | null;
+
+  /** Séries uniquement. */
+  seasonCount?: number;
+  episodeCount?: number;
+  lastAirDate?: string | null;
+  inProduction?: boolean;
+  networks?: string[];
+  seasons?: Season[];
 }

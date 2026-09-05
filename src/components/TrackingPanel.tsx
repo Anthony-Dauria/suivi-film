@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { RatingStars } from "@/components/RatingStars";
 import { useEntry } from "@/lib/hooks";
-import { removeMovie, saveMovie, toggleStatus, type EntryPatch } from "@/lib/library";
+import { removeMedia, saveMedia, toggleStatus, type EntryPatch } from "@/lib/library";
 import { showToast } from "@/lib/toast";
-import type { WatchStatus } from "@/lib/types";
+import type { MediaType, WatchStatus } from "@/lib/types";
 
 interface TrackingPanelProps {
-  movieId: number;
+  mediaType: MediaType;
+  id: number;
   title: string;
 }
 
@@ -45,8 +46,8 @@ const STATUS_BUTTONS: {
 ];
 
 /** Panneau de suivi personnel affiché sur la fiche d'un film. */
-export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
-  const entry = useEntry(movieId);
+export function TrackingPanel({ mediaType, id, title }: TrackingPanelProps) {
+  const entry = useEntry(mediaType, id);
   const [notes, setNotes] = useState(entry?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -84,7 +85,12 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
 
   /** Toute action de notation bascule implicitement le film en « vu ». */
   const updateSeen = (patch: EntryPatch) =>
-    run(() => saveMovie(movieId, { status: entry?.status === "seen" ? undefined : "seen", ...patch }));
+    run(() =>
+      saveMedia(mediaType, id, {
+        status: entry?.status === "seen" ? undefined : "seen",
+        ...patch,
+      }),
+    );
 
   const scheduleNotes = (value: string) => {
     editingNotes.current = true;
@@ -93,7 +99,7 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
     notesTimer.current = setTimeout(() => {
       editingNotes.current = false;
       void run(() =>
-        saveMovie(movieId, { status: entry?.status ?? "watchlist", notes: value }),
+        saveMedia(mediaType, id, { status: entry?.status ?? "watchlist", notes: value }),
       );
     }, 900);
   };
@@ -124,7 +130,7 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
               key={button.status}
               onClick={() =>
                 void run(
-                  () => toggleStatus(movieId, button.status),
+                  () => toggleStatus(mediaType, id, button.status),
                   entry?.status === button.status
                     ? `« ${title} » retiré de votre bibliothèque`
                     : button.confirmation(title),
@@ -147,7 +153,11 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
           disabled={saving}
           onClick={() =>
             void run(
-              () => saveMovie(movieId, { status: entry?.status === "seen" ? undefined : "seen", favorite: !entry?.favorite }),
+              () =>
+                saveMedia(mediaType, id, {
+                  status: entry?.status === "seen" ? undefined : "seen",
+                  favorite: !entry?.favorite,
+                }),
               entry?.favorite ? "Coup de cœur retiré" : `« ${title} » ajouté à vos coups de cœur`,
             )
           }
@@ -185,7 +195,7 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
 
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-mist-400">
-              Revisionnages
+              {mediaType === "tv" ? "Revisionnages" : "Revisionnages"}
             </span>
             <input
               className="w-full rounded-lg border border-ink-600 bg-ink-900 px-3 py-2 text-sm outline-none focus:border-gold-500"
@@ -218,12 +228,12 @@ export function TrackingPanel({ movieId, title }: TrackingPanelProps) {
           <button
             className="text-xs text-mist-400 underline-offset-2 hover:text-rose-400 hover:underline"
             onClick={() => {
-              removeMovie(movieId);
+              removeMedia(mediaType, id);
               showToast(`« ${title} » retiré de votre bibliothèque`, "neutral");
             }}
             type="button"
           >
-            Retirer ce film de ma bibliothèque
+            {mediaType === "tv" ? "Retirer cette série" : "Retirer ce film"} de ma bibliothèque
           </button>
         )}
 

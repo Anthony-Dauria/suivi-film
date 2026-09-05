@@ -4,14 +4,21 @@
  * Le site étant statique, il n'y a pas de serveur pour relayer les appels : les
  * requêtes partent directement du navigateur vers l'API TMDB (qui autorise les
  * appels cross-origin). Les réponses passent par le cache de `cache.ts`.
+ *
+ * Films et séries vivent sur des routes distinctes (`/movie/…` et `/tv/…`) et
+ * ne portent pas les mêmes noms de champs : tout est normalisé ici pour que le
+ * reste de l'application manipule une seule forme.
  */
 
 import { cached } from "./cache";
 import { getSettings, getStoredApiKey } from "./store";
 import type {
-  MovieDetails,
+  MediaDetails,
+  MediaSummary,
+  MediaType,
+  NamedEntity,
+  Season,
   TmdbCredit,
-  TmdbMovieSummary,
   TmdbProvider,
   TmdbVideo,
   WatchProviders,
@@ -80,9 +87,8 @@ async function tmdbFetch<T>(path: string, options: TmdbFetchOptions = {}): Promi
     );
   }
 
-  const language = getLanguage();
   const url = new URL(`${BASE_URL}${path}`);
-  url.searchParams.set("language", language);
+  url.searchParams.set("language", getLanguage());
   for (const [name, value] of Object.entries(options.params ?? {})) {
     if (value !== undefined && value !== "") url.searchParams.set(name, String(value));
   }
@@ -139,8 +145,45 @@ export function backdropUrl(path: string | null, size: BackdropSize = "w1280"): 
 }
 
 /* -------------------------------------------------------------------------- */
-/* Recherche et listes                                                         */
+/* Normalisation des listes                                                    */
 /* -------------------------------------------------------------------------- */
+
+interface RawSummary {
+  id: number;
+  media_type?: string;
+  title?: string;
+  name?: string;
+  original_title?: string;
+  original_name?: string;
+  overview?: string | null;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  release_date?: string | null;
+  first_air_date?: string | null;
+  genre_ids?: number[];
+  vote_average?: number;
+  vote_count?: number;
+  popularity?: number;
+  adult?: boolean;
+}
+
+/** Ramène un résultat de liste TMDB à la forme unique utilisée par l'interface. */
+function toSummary(raw: RawSummary, mediaType: MediaType): MediaSummary {
+  return {
+    id: raw.id,
+    mediaType,
+    title: raw.title ?? raw.name ?? "Sans titre",
+    originalTitle: raw.original_title ?? raw.original_name ?? "",
+    overview: raw.overview ?? "",
+    posterPath: raw.poster_path ?? null,
+    backdropPath: raw.backdrop_path ?? null,
+    releaseDate: raw.release_date || raw.first_air_date || null,
+    genreIds: raw.genre_ids ?? [],
+    voteAverage: raw.vote_average ?? 0,
+    voteCount: raw.vote_count ?? 0,
+    popularity: raw.popularity ?? 0,
+  };
+}
 
 interface PagedResponse<T> {
   page: number;
@@ -149,36 +192,79 @@ interface PagedResponse<T> {
   total_results: number;
 }
 
-const EMPTY_PAGE: PagedResponse<never> = {
+export interface SearchResult {
+  page: number;
+  results: MediaSummary[];
+  totalPages: number;
+  totalResults: number;
+}
+
+const EMPTY_RAW_PAGE: PagedResponse<RawSummary> = {
   page: 1,
   results: [],
   total_pages: 0,
   total_results: 0,
 };
 
-export async function searchMovies(query: string, page = 1) {
-  const trimmed = query.trim();
-  if (!trimmed) return EMPTY_PAGE as PagedResponse<TmdbMovieSummary>;
+/* -------------------------------------------------------------------------- */
+/* Recherche et listes                                                         */
+/* -------------------------------------------------------------------------- */
 
-  return tmdbFetch<PagedResponse<TmdbMovieSummary>>("/search/movie", {
+/**
+ * Recherche films et séries en une fois.
+ *
+ * `/search/multi` renvoie aussi des personnes : elles sont écartées, comme les
+ * contenus pour adultes.
+ */
+export async function searchMedia(
+  query: string,
+  page = 1,
+  mediaType?: MediaType,
+): Promise<SearchResult> {
+  const trimmed = query.trim();
+  if (!trimmed) return { page: 1, results: [], totalPages: 0, totalResults: 0 };
+
+  const path = mediaType ? `/search/${mediaType}` : "/search/multi";
+  const data = await tmdbFetch<PagedResponse<RawSummary>>(path, {
     params: { query: trimmed, page, include_adult: false, region: getRegion() },
     ttl: 10 * 60 * 1000,
   });
+
+  const results = data.results
+    .filter((raw) => {
+      if (raw.adult) return false;
+      const type = mediaType ?? raw.media_type;
+      return type === "movie" || type === "tv";
+    })
+    .map((raw) => toSummary(raw, (mediaType ?? raw.media_type) as MediaType));
+
+  return {
+    page: data.page,
+    results,
+    totalPages: data.total_pages,
+    totalResults: data.total_results,
+  };
 }
 
-export async function getTrending(window: "day" | "week" = "week") {
-  const data = await tmdbFetch<PagedResponse<TmdbMovieSummary>>(`/trending/movie/${window}`, {
+/** Tendances de la semaine, tous types confondus ou pour un type donné. */
+export async function getTrending(mediaType: MediaType | "all" = "all") {
+  const data = await tmdbFetch<PagedResponse<RawSummary>>(`/trending/${mediaType}/week`, {
     ttl: HOUR,
   });
-  return data.results;
+  return data.results
+    .filter((raw) => {
+      const type = mediaType === "all" ? raw.media_type : mediaType;
+      return type === "movie" || type === "tv";
+    })
+    .map((raw) => toSummary(raw, (mediaType === "all" ? raw.media_type : mediaType) as MediaType));
 }
 
-export async function getTopRated() {
-  const data = await tmdbFetch<PagedResponse<TmdbMovieSummary>>("/movie/top_rated", {
-    params: { region: getRegion(), page: 1 },
+export async function getTopRated(mediaType: MediaType) {
+  const data = await tmdbFetch<PagedResponse<RawSummary>>(`/${mediaType}/top_rated`, {
+    params: { page: 1, region: mediaType === "movie" ? getRegion() : undefined },
     ttl: 24 * HOUR,
   });
-  return data.results;
+  return data.results.map((raw) => toSummary(raw, mediaType));
 }
 
 export interface DiscoverParams {
@@ -190,114 +276,84 @@ export interface DiscoverParams {
   withWatchProviders?: string;
   sortBy?: string;
   voteCountGte?: number;
-  voteAverageGte?: number;
   releaseDateGte?: string;
-  releaseDateLte?: string;
   runtimeLte?: number;
   page?: number;
 }
 
-export async function discoverMovies(params: DiscoverParams) {
+export async function discover(mediaType: MediaType, params: DiscoverParams) {
   const region = getRegion();
-  const data = await tmdbFetchSafe<PagedResponse<TmdbMovieSummary>>(
-    "/discover/movie",
+  // Les filtres de date et de casting ne portent pas le même nom selon le type.
+  const dateField = mediaType === "movie" ? "primary_release_date" : "first_air_date";
+  const peopleParams =
+    mediaType === "movie"
+      ? { with_cast: params.withCast, with_crew: params.withCrew }
+      : { with_people: params.withCast ?? params.withCrew };
+
+  const data = await tmdbFetchSafe<PagedResponse<RawSummary>>(
+    `/discover/${mediaType}`,
     {
       params: {
         include_adult: false,
-        include_video: false,
-        region,
         watch_region: region,
+        ...(mediaType === "movie" ? { region, include_video: false } : {}),
         sort_by: params.sortBy ?? "popularity.desc",
         with_genres: params.withGenres,
         without_genres: params.withoutGenres,
         with_keywords: params.withKeywords,
-        with_cast: params.withCast,
-        with_crew: params.withCrew,
+        ...peopleParams,
         with_watch_providers: params.withWatchProviders,
         "vote_count.gte": params.voteCountGte ?? 100,
-        "vote_average.gte": params.voteAverageGte,
-        "primary_release_date.gte": params.releaseDateGte,
-        "primary_release_date.lte": params.releaseDateLte,
+        [`${dateField}.gte`]: params.releaseDateGte,
         "with_runtime.lte": params.runtimeLte,
         page: params.page ?? 1,
       },
       ttl: 6 * HOUR,
     },
-    EMPTY_PAGE,
+    EMPTY_RAW_PAGE,
   );
-  return data.results;
+  return data.results.map((raw) => toSummary(raw, mediaType));
 }
 
-export async function getMovieRecommendations(movieId: number) {
-  const data = await tmdbFetchSafe<PagedResponse<TmdbMovieSummary>>(
-    `/movie/${movieId}/recommendations`,
+export async function getRelated(
+  mediaType: MediaType,
+  id: number,
+  kind: "recommendations" | "similar",
+) {
+  const data = await tmdbFetchSafe<PagedResponse<RawSummary>>(
+    `/${mediaType}/${id}/${kind}`,
     { ttl: 24 * HOUR },
-    EMPTY_PAGE,
+    EMPTY_RAW_PAGE,
   );
-  return data.results;
+  return data.results.map((raw) => toSummary(raw, mediaType));
 }
 
-export async function getSimilarMovies(movieId: number) {
-  const data = await tmdbFetchSafe<PagedResponse<TmdbMovieSummary>>(
-    `/movie/${movieId}/similar`,
-    { ttl: 24 * HOUR },
-    EMPTY_PAGE,
-  );
-  return data.results;
-}
-
+/** Plateformes proposées dans le pays, films et séries confondus. */
 export async function getAvailableProviders(): Promise<TmdbProvider[]> {
-  const data = await tmdbFetchSafe<{ results: TmdbProvider[] }>(
-    "/watch/providers/movie",
-    { params: { watch_region: getRegion() }, ttl: 7 * 24 * HOUR },
-    { results: [] },
+  const region = getRegion();
+  const [movies, series] = await Promise.all(
+    (["movie", "tv"] as const).map((type) =>
+      tmdbFetchSafe<{ results: TmdbProvider[] }>(
+        `/watch/providers/${type}`,
+        { params: { watch_region: region }, ttl: 7 * 24 * HOUR },
+        { results: [] },
+      ),
+    ),
   );
-  return data.results
-    .slice()
+
+  const seen = new Set<number>();
+  return [...movies.results, ...series.results]
+    .filter((provider) => {
+      if (seen.has(provider.provider_id)) return false;
+      seen.add(provider.provider_id);
+      return true;
+    })
     .sort((a, b) => (a.display_priority ?? 999) - (b.display_priority ?? 999));
 }
 
 /* -------------------------------------------------------------------------- */
 /* Fiche détaillée                                                             */
 /* -------------------------------------------------------------------------- */
-
-interface RawMovieDetails {
-  id: number;
-  title: string;
-  original_title: string;
-  tagline: string | null;
-  overview: string | null;
-  poster_path: string | null;
-  backdrop_path: string | null;
-  release_date: string | null;
-  runtime: number | null;
-  status: string | null;
-  genres: { id: number; name: string }[];
-  vote_average: number;
-  vote_count: number;
-  popularity: number;
-  budget: number;
-  revenue: number;
-  homepage: string | null;
-  imdb_id: string | null;
-  original_language: string | null;
-  spoken_languages: { english_name: string; name: string }[];
-  production_countries: { iso_3166_1: string; name: string }[];
-  production_companies: { id: number; name: string }[];
-  belongs_to_collection: { id: number; name: string; poster_path: string | null } | null;
-  credits?: { cast: TmdbCredit[]; crew: TmdbCredit[] };
-  videos?: { results: TmdbVideo[] };
-  keywords?: { keywords: { id: number; name: string }[] };
-  similar?: { results: TmdbMovieSummary[] };
-  recommendations?: { results: TmdbMovieSummary[] };
-  release_dates?: {
-    results: {
-      iso_3166_1: string;
-      release_dates: { certification: string; type: number }[];
-    }[];
-  };
-  "watch/providers"?: { results: Record<string, RawProviderGroup> };
-}
 
 interface RawProviderGroup {
   link?: string;
@@ -306,6 +362,49 @@ interface RawProviderGroup {
   buy?: TmdbProvider[];
   ads?: TmdbProvider[];
   free?: TmdbProvider[];
+}
+
+interface RawDetails extends RawSummary {
+  tagline?: string | null;
+  runtime?: number | null;
+  episode_run_time?: number[];
+  status?: string | null;
+  genres?: NamedEntity[];
+  homepage?: string | null;
+  imdb_id?: string | null;
+  original_language?: string | null;
+  spoken_languages?: { name: string }[];
+  production_countries?: { name: string }[];
+  production_companies?: { id: number; name: string }[];
+  belongs_to_collection?: { id: number; name: string; poster_path: string | null } | null;
+  budget?: number;
+  revenue?: number;
+  created_by?: TmdbCredit[];
+  networks?: { id: number; name: string }[];
+  number_of_seasons?: number;
+  number_of_episodes?: number;
+  last_air_date?: string | null;
+  in_production?: boolean;
+  seasons?: {
+    id: number;
+    season_number: number;
+    name: string;
+    episode_count: number;
+    air_date: string | null;
+    poster_path: string | null;
+    overview: string;
+  }[];
+  credits?: { cast: TmdbCredit[]; crew: TmdbCredit[] };
+  videos?: { results: TmdbVideo[] };
+  keywords?: { keywords?: NamedEntity[]; results?: NamedEntity[] };
+  similar?: { results: RawSummary[] };
+  recommendations?: { results: RawSummary[] };
+  release_dates?: {
+    results: { iso_3166_1: string; release_dates: { certification: string }[] }[];
+  };
+  content_ratings?: { results: { iso_3166_1: string; rating: string }[] };
+  external_ids?: { imdb_id?: string | null };
+  "watch/providers"?: { results: Record<string, RawProviderGroup> };
 }
 
 /** Choisit la meilleure bande-annonce disponible (officielle en priorité). */
@@ -319,11 +418,6 @@ function pickTrailer(videos: TmdbVideo[]): TmdbVideo | null {
     return value;
   };
   return youtube.slice().sort((a, b) => score(b) - score(a))[0] ?? null;
-}
-
-function extractCertification(raw: RawMovieDetails, region: string): string | null {
-  const entry = raw.release_dates?.results.find((item) => item.iso_3166_1 === region);
-  return entry?.release_dates.find((item) => item.certification)?.certification || null;
 }
 
 function toWatchProviders(group: RawProviderGroup | undefined): WatchProviders {
@@ -345,70 +439,124 @@ function toWatchProviders(group: RawProviderGroup | undefined): WatchProviders {
   };
 }
 
-export async function getMovieDetails(movieId: number): Promise<MovieDetails> {
+/** Classification du public : `release_dates` pour un film, `content_ratings` pour une série. */
+function extractCertification(raw: RawDetails, region: string): string | null {
+  const movie = raw.release_dates?.results
+    .find((item) => item.iso_3166_1 === region)
+    ?.release_dates.find((item) => item.certification)?.certification;
+  const series = raw.content_ratings?.results.find((item) => item.iso_3166_1 === region)?.rating;
+  return movie || series || null;
+}
+
+export async function getDetails(
+  mediaType: MediaType,
+  id: number,
+): Promise<MediaDetails> {
   const region = getRegion();
-  const raw = await tmdbFetch<RawMovieDetails>(`/movie/${movieId}`, {
+  const appendix =
+    mediaType === "movie"
+      ? "credits,videos,keywords,similar,recommendations,release_dates,watch/providers"
+      : "credits,videos,keywords,similar,recommendations,content_ratings,external_ids,watch/providers";
+
+  const raw = await tmdbFetch<RawDetails>(`/${mediaType}/${id}`, {
     params: {
-      append_to_response:
-        "credits,videos,keywords,similar,recommendations,release_dates,watch/providers",
+      append_to_response: appendix,
       include_video_language: `${getLanguage().split("-")[0]},en,null`,
     },
     ttl: 12 * HOUR,
   });
 
   const crew = raw.credits?.crew ?? [];
+  // Une série n'a pas de réalisateur unique : ses créateurs jouent ce rôle.
+  const directors =
+    mediaType === "movie"
+      ? crew.filter((member) => member.job === "Director")
+      : (raw.created_by ?? []);
+
+  const runtime =
+    mediaType === "movie"
+      ? (raw.runtime ?? null)
+      : (raw.episode_run_time?.find((value) => value > 0) ?? null);
+
+  const seasons: Season[] = (raw.seasons ?? [])
+    // La « saison 0 » regroupe les épisodes spéciaux : elle vient en dernier.
+    .map((season) => ({
+      id: season.id,
+      seasonNumber: season.season_number,
+      name: season.name,
+      episodeCount: season.episode_count,
+      airDate: season.air_date,
+      posterPath: season.poster_path,
+      overview: season.overview,
+    }))
+    .sort((a, b) => (a.seasonNumber || 99) - (b.seasonNumber || 99));
 
   return {
     id: raw.id,
-    title: raw.title,
-    originalTitle: raw.original_title,
+    mediaType,
+    title: raw.title ?? raw.name ?? "Sans titre",
+    originalTitle: raw.original_title ?? raw.original_name ?? "",
     tagline: raw.tagline || null,
     overview: raw.overview ?? "",
-    posterPath: raw.poster_path,
-    backdropPath: raw.backdrop_path,
-    releaseDate: raw.release_date || null,
-    runtime: raw.runtime || null,
-    status: raw.status,
+    posterPath: raw.poster_path ?? null,
+    backdropPath: raw.backdrop_path ?? null,
+    releaseDate: raw.release_date || raw.first_air_date || null,
+    runtime,
+    status: raw.status ?? null,
     genres: raw.genres ?? [],
     voteAverage: raw.vote_average ?? 0,
     voteCount: raw.vote_count ?? 0,
     popularity: raw.popularity ?? 0,
-    budget: raw.budget ?? 0,
-    revenue: raw.revenue ?? 0,
     homepage: raw.homepage || null,
-    imdbId: raw.imdb_id || null,
-    originalLanguage: raw.original_language,
+    imdbId: raw.imdb_id || raw.external_ids?.imdb_id || null,
+    originalLanguage: raw.original_language ?? null,
     spokenLanguages: (raw.spoken_languages ?? []).map((language) => language.name),
     productionCountries: (raw.production_countries ?? []).map((country) => country.name),
     productionCompanies: (raw.production_companies ?? []).map((company) => company.name),
-    collection: raw.belongs_to_collection
-      ? {
-          id: raw.belongs_to_collection.id,
-          name: raw.belongs_to_collection.name,
-          posterPath: raw.belongs_to_collection.poster_path,
-        }
-      : null,
     certification: extractCertification(raw, region),
-    directors: crew.filter((member) => member.job === "Director"),
+    directors,
     writers: crew.filter(
       (member) =>
         member.job === "Screenplay" || member.job === "Writer" || member.job === "Story",
     ),
     cast: (raw.credits?.cast ?? []).slice(0, 24),
     trailer: pickTrailer(raw.videos?.results ?? []),
-    videos: (raw.videos?.results ?? []).filter((video) => video.site === "YouTube").slice(0, 8),
     providers: toWatchProviders(raw["watch/providers"]?.results?.[region]),
-    keywords: raw.keywords?.keywords ?? [],
-    similar: raw.similar?.results ?? [],
-    recommendations: raw.recommendations?.results ?? [],
+    keywords: raw.keywords?.keywords ?? raw.keywords?.results ?? [],
+    similar: (raw.similar?.results ?? []).map((item) => toSummary(item, mediaType)),
+    recommendations: (raw.recommendations?.results ?? []).map((item) => toSummary(item, mediaType)),
+
+    ...(mediaType === "movie"
+      ? {
+          budget: raw.budget ?? 0,
+          revenue: raw.revenue ?? 0,
+          collection: raw.belongs_to_collection
+            ? {
+                id: raw.belongs_to_collection.id,
+                name: raw.belongs_to_collection.name,
+                posterPath: raw.belongs_to_collection.poster_path,
+              }
+            : null,
+        }
+      : {
+          seasonCount: raw.number_of_seasons ?? seasons.length,
+          episodeCount: raw.number_of_episodes ?? 0,
+          lastAirDate: raw.last_air_date ?? null,
+          inProduction: raw.in_production ?? false,
+          networks: (raw.networks ?? []).map((network) => network.name),
+          seasons,
+        }),
   };
 }
 
-/** Plateformes de visionnage d'un film (requête légère, mise en cache). */
-export async function getWatchProviders(movieId: number): Promise<WatchProviders> {
+/** Plateformes de visionnage (requête légère, mise en cache). */
+export async function getWatchProviders(
+  mediaType: MediaType,
+  id: number,
+): Promise<WatchProviders> {
   const region = getRegion();
   const data = await tmdbFetchSafe<{ results: Record<string, RawProviderGroup> }>(
-    `/movie/${movieId}/watch/providers`,
+    `/${mediaType}/${id}/watch/providers`,
     { ttl: 12 * HOUR },
     { results: {} },
   );
@@ -416,9 +564,10 @@ export async function getWatchProviders(movieId: number): Promise<WatchProviders
 }
 
 /** Construit l'instantané local à partir d'une fiche complète. */
-export function toSnapshot(details: MovieDetails) {
+export function toSnapshot(details: MediaDetails) {
   return {
     id: details.id,
+    mediaType: details.mediaType,
     title: details.title,
     originalTitle: details.originalTitle,
     posterPath: details.posterPath,
@@ -437,5 +586,8 @@ export function toSnapshot(details: MovieDetails) {
       id: keyword.id,
       name: keyword.name,
     })),
+    ...(details.mediaType === "tv"
+      ? { seasonCount: details.seasonCount, episodeCount: details.episodeCount }
+      : {}),
   };
 }

@@ -3,24 +3,24 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { MovieGrid, MovieRow } from "@/components/MovieGrid";
+import { MediaGrid, MediaRow } from "@/components/MediaGrid";
 import { SearchLauncher } from "@/components/SearchLauncher";
 import { EmptyState, ErrorNotice, SectionHeader, StatTile } from "@/components/ui";
 import { entryToCard, summaryToCard } from "@/lib/cards";
 import { formatRating, formatTotalRuntime } from "@/lib/format";
 import { useEntries, useIsConfigured } from "@/lib/hooks";
-import { getRecommendations, type ScoredMovie } from "@/lib/reco";
+import { getRecommendations, type ScoredMedia } from "@/lib/reco";
 import { computeStats } from "@/lib/stats";
 import { getTrending } from "@/lib/tmdb";
-import type { TmdbMovieSummary } from "@/lib/types";
+import type { MediaSummary } from "@/lib/types";
 
 export function HomeClient() {
   const entries = useEntries();
   const configured = useIsConfigured();
   const stats = useMemo(() => computeStats(entries), [entries]);
 
-  const [recommendations, setRecommendations] = useState<ScoredMovie[]>([]);
-  const [trending, setTrending] = useState<TmdbMovieSummary[]>([]);
+  const [recommendations, setRecommendations] = useState<ScoredMedia[]>([]);
+  const [trending, setTrending] = useState<MediaSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -29,7 +29,10 @@ export function HomeClient() {
     () =>
       entries
         .filter((entry) => entry.status !== "watchlist")
-        .map((entry) => `${entry.id}:${entry.status}:${entry.rating ?? ""}:${entry.favorite}`)
+        .map(
+          (entry) =>
+            `${entry.mediaType}:${entry.id}:${entry.status}:${entry.rating ?? ""}:${entry.favorite}`,
+        )
         .sort()
         .join("|"),
     [entries],
@@ -44,7 +47,7 @@ export function HomeClient() {
     void (async () => {
       const [reco, trend] = await Promise.allSettled([
         getRecommendations({ limit: 12 }),
-        getTrending("week"),
+        getTrending("all"),
       ]);
       if (cancelled) return;
       if (reco.status === "fulfilled") setRecommendations(reco.value.items);
@@ -73,9 +76,8 @@ export function HomeClient() {
           Notez ce que vous avez vu, découvrez quoi regarder ensuite.
         </h1>
         <p className="mt-3 hidden max-w-2xl text-sm text-mist-300 sm:block">
-          Chaque film dispose d&apos;une fiche complète — synopsis, casting, bande-annonce, note du
-          public — et de la liste des plateformes où le voir. Plus vous notez, plus les
-          recommandations vous ressemblent.
+          Films et séries : chaque fiche réunit synopsis, casting, bande-annonce, note du public
+          et plateformes où regarder. Plus vous notez, plus les recommandations vous ressemblent.
         </p>
         <div className="mt-4 max-w-xl sm:mt-6">
           <SearchLauncher />
@@ -85,13 +87,17 @@ export function HomeClient() {
       <section aria-label="Statistiques rapides">
         <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
           <StatTile
-            hint={stats.ratedCount > 0 ? `${stats.ratedCount} notés` : "Aucune note"}
-            label="Films vus"
+            hint={
+              stats.seen > 0
+                ? `${stats.seenMovies} film${stats.seenMovies > 1 ? "s" : ""} · ${stats.seenSeries} série${stats.seenSeries > 1 ? "s" : ""}`
+                : "Aucune note"
+            }
+            label="Vus"
             value={String(stats.seen)}
           />
           <StatTile hint="Dans ma liste" label="À voir" value={String(stats.watchlist)} />
           <StatTile
-            hint="Revisionnages inclus"
+            hint="Séries comptées par épisode"
             label="Temps de visionnage"
             value={formatTotalRuntime(stats.totalMinutes)}
           />
@@ -113,8 +119,8 @@ export function HomeClient() {
         />
       ) : entries.length === 0 ? (
         <EmptyState
-          action={{ href: "/recherche", label: "Ajouter mon premier film" }}
-          description="Ajoutez les films que vous avez déjà vus et notez-les : le moteur de recommandation s'appuie sur vos goûts pour vous proposer la suite."
+          action={{ href: "/recherche", label: "Ajouter mon premier titre" }}
+          description="Ajoutez les films et séries que vous avez déjà vus et notez-les : le moteur de recommandation s'appuie sur vos goûts pour vous proposer la suite."
           title="Votre bibliothèque est vide"
         />
       ) : null}
@@ -123,10 +129,10 @@ export function HomeClient() {
         <section>
           <SectionHeader
             href="/bibliotheque/?statut=watchlist"
-            subtitle="Les films que vous avez mis de côté"
+            subtitle="Ce que vous avez mis de côté"
             title="À voir prochainement"
           />
-          <MovieRow movies={watchlist.map(entryToCard)} />
+          <MediaRow items={watchlist.map(entryToCard)} />
         </section>
       )}
 
@@ -138,9 +144,9 @@ export function HomeClient() {
             title="Sélection pour vous"
           />
           {recommendations.length > 0 ? (
-            <MovieGrid
-              movies={recommendations.map((item) => ({
-                ...summaryToCard(item.movie),
+            <MediaGrid
+              items={recommendations.map((item) => ({
+                ...summaryToCard(item.media),
                 reasons: item.reasons,
                 providers: item.providers,
               }))}
@@ -158,14 +164,14 @@ export function HomeClient() {
             subtitle="Vos derniers ajouts"
             title="Vu récemment"
           />
-          <MovieRow movies={recentlySeen.map(entryToCard)} />
+          <MediaRow items={recentlySeen.map(entryToCard)} />
         </section>
       )}
 
       {trending.length > 0 && (
         <section>
           <SectionHeader subtitle="Cette semaine sur TMDB" title="Tendances" />
-          <MovieRow movies={trending.map(summaryToCard)} />
+          <MediaRow items={trending.map(summaryToCard)} />
         </section>
       )}
 

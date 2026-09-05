@@ -1,23 +1,41 @@
-import type { LibraryEntry, TmdbMovieSummary } from "./types";
+import type { LibraryEntry, MediaSummary } from "./types";
 
-/** Adapte un résultat TMDB au format attendu par `MovieCard`. */
-export function summaryToCard(movie: TmdbMovieSummary) {
+export interface CardData {
+  id: number;
+  mediaType: "movie" | "tv";
+  title: string;
+  posterPath: string | null;
+  releaseDate: string | null;
+  voteAverage?: number;
+  seasonCount?: number;
+}
+
+/** Adapte un résultat TMDB au format attendu par `MediaCard`. */
+export function summaryToCard(media: MediaSummary): CardData {
   return {
-    id: movie.id,
-    title: movie.title,
-    posterPath: movie.poster_path,
-    releaseDate: movie.release_date,
-    voteAverage: movie.vote_average,
+    id: media.id,
+    mediaType: media.mediaType,
+    title: media.title,
+    posterPath: media.posterPath,
+    releaseDate: media.releaseDate,
+    voteAverage: media.voteAverage,
   };
 }
 
-/** Adapte une entrée de bibliothèque au format attendu par `MovieCard`. */
-export function entryToCard(entry: LibraryEntry) {
+/** Adapte une entrée de bibliothèque au format attendu par `MediaCard`. */
+export function entryToCard(entry: LibraryEntry): CardData {
   return {
     id: entry.id,
-    title: entry.movie.title,
-    posterPath: entry.movie.posterPath,
-    releaseDate: entry.movie.releaseDate,
-    voteAverage: entry.movie.voteAverage,
+    mediaType: entry.mediaType,
+    title: entry.media.title,
+    posterPath: entry.media.posterPath,
+    releaseDate: entry.media.releaseDate,
+    voteAverage: entry.media.voteAverage,
+    seasonCount: entry.media.seasonCount,
   };
+}
+
+/** Adresse de la fiche : les films et les séries ont leur propre route. */
+export function mediaHref(mediaType: "movie" | "tv", id: number): string {
+  return mediaType === "tv" ? `/serie/?id=${id}` : `/film/?id=${id}`;
 }
